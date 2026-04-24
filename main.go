@@ -16,5 +16,9 @@ func main() {
 		w.Write([]byte("pong"))
 	})
 
+	r.Route("/api", func(chi chi.Router) {
+		// r.Get("/games")
+	})
+
 	http.ListenAndServe(":8080", r)
 }

@@ -6,8 +6,8 @@ export default function App() {
     return (
         <BrowserRouter>
             <nav>
-                <Link to="/">Home</Link>
-                <Link to="/test">Test</Link>
+                <Link to="/" className="p-4 text-2xl">Home</Link>
+                <Link to="/test" className="p-4 text-2xl">Test</Link>
             </nav>
 
             <Routes>
