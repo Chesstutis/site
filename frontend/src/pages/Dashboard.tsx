@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react
 import { useSearchParams } from "react-router-dom"
 import {
     FaBullseye,
+    FaCircle,
     FaChessKnight,
     FaCrown,
     FaGlobe,
@@ -68,6 +69,45 @@ type PlayerProfile = {
     status?: string
 }
 
+type ArchiveResponse = {
+    archives?: string[]
+}
+
+type ArchivePlayer = {
+    username?: string
+    result?: string
+    rating?: number
+}
+
+type ArchiveGame = {
+    url?: string
+    end_time?: number
+    rated?: boolean
+    time_class?: string
+    time_control?: string
+    white?: ArchivePlayer
+    black?: ArchivePlayer
+}
+
+type MonthlyArchiveResponse = {
+    games?: ArchiveGame[]
+}
+
+type RecentGame = {
+    id: string
+    playedAt?: number
+    result: string
+    timeClass: string
+    timeControl: string
+    rated: boolean
+    whitePlayer: string
+    blackPlayer: string
+    playerRating: number | null
+    whiteRating: number | null
+    blackRating: number | null
+    opponentRating: number | null
+}
+
 const formatDate = (unix?: number) => {
     if (!unix) return "-"
     return new Date(unix * 1000).toLocaleDateString()
@@ -77,6 +117,61 @@ const countryCodeFromUrl = (countryUrl?: string) => {
     if (!countryUrl) return "-"
     const code = countryUrl.split("/").pop()
     return code || "-"
+}
+
+const normalizeUsername = (value?: string) => value?.trim().toLowerCase() ?? ""
+
+const toRecentGame = (game: ArchiveGame, targetUsername: string): RecentGame | null => {
+    const whiteName = normalizeUsername(game.white?.username)
+    const blackName = normalizeUsername(game.black?.username)
+    const cleanTarget = normalizeUsername(targetUsername)
+
+    const playerColor = whiteName === cleanTarget ? "white" : blackName === cleanTarget ? "black" : null
+    if (!playerColor) return null
+
+    const player = playerColor === "white" ? game.white : game.black
+    const opponent = playerColor === "white" ? game.black : game.white
+    const rawResult = player?.result ?? "unknown"
+
+    return {
+        id: game.url || `${game.end_time ?? 0}-${rawResult}`,
+        playedAt: game.end_time,
+        result: rawResult,
+        timeClass: game.time_class ?? "-",
+        timeControl: game.time_control ?? "-",
+        rated: Boolean(game.rated),
+        whitePlayer: game.white?.username ?? "White",
+        blackPlayer: game.black?.username ?? "Black",
+        playerRating: typeof player?.rating === "number" ? player.rating : null,
+        whiteRating: typeof game.white?.rating === "number" ? game.white.rating : null,
+        blackRating: typeof game.black?.rating === "number" ? game.black.rating : null,
+        opponentRating: typeof opponent?.rating === "number" ? opponent.rating : null,
+    }
+}
+
+const timeClassIcon = (timeClass?: string) => {
+    switch (timeClass) {
+        case "rapid":
+            return <FaStopwatch className="text-sky-600" aria-hidden="true" />
+        case "blitz":
+            return <HiMiniBolt className="text-amber-500" aria-hidden="true" />
+        case "bullet":
+            return <GiBulletBill className="text-slate-700" aria-hidden="true" />
+        case "daily":
+            return <FaSun className="text-orange-500" aria-hidden="true" />
+        default:
+            return <FaChessKnight className="text-primary" aria-hidden="true" />
+    }
+}
+
+const resultIcon = (result: string) => {
+    if (result === "win") {
+        return <FaLongArrowAltUp className="text-emerald-600" aria-hidden="true" />
+    }
+    if (["agreed", "repetition", "stalemate", "timevsinsufficient", "insufficient", "50move", "draw"].includes(result)) {
+        return <FaCircle className="text-muted-foreground" aria-hidden="true" size={10} />
+    }
+    return <FaLongArrowAltDown className="text-rose-600" aria-hidden="true" />
 }
 
 type StatCardProps = {
@@ -127,6 +222,7 @@ export default function Dashboard() {
     const [username, setUsername] = useState(initialQueryUsername)
     const [profile, setProfile] = useState<PlayerProfile | null>(null)
     const [stats, setStats] = useState<ChessStats | null>(null)
+    const [recentGames, setRecentGames] = useState<RecentGame[]>([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState("")
 
@@ -141,9 +237,10 @@ export default function Dashboard() {
         setError("")
 
         try {
-            const [profileRes, statsRes] = await Promise.all([
+            const [profileRes, statsRes, archivesRes] = await Promise.all([
                 fetch(`https://api.chess.com/pub/player/${cleanUsername}`),
                 fetch(`https://api.chess.com/pub/player/${cleanUsername}/stats`),
+                fetch(`https://api.chess.com/pub/player/${cleanUsername}/games/archives`),
             ])
 
             if (!profileRes.ok) {
@@ -154,18 +251,43 @@ export default function Dashboard() {
                 throw new Error("Could not fetch player stats.")
             }
 
-            const [profileData, statsData] = (await Promise.all([
+            if (!archivesRes.ok) {
+                throw new Error("Could not fetch player game archives.")
+            }
+
+            const [profileData, statsData, archivesData] = (await Promise.all([
                 profileRes.json(),
                 statsRes.json(),
-            ])) as [PlayerProfile, ChessStats]
+                archivesRes.json(),
+            ])) as [PlayerProfile, ChessStats, ArchiveResponse]
+
+            const archiveUrls = archivesData.archives ?? []
+            const latestArchiveUrls = archiveUrls.slice(-2)
+            const monthlyGamesResponses = await Promise.all(
+                latestArchiveUrls.map(async (archiveUrl) => {
+                    const monthlyRes = await fetch(archiveUrl)
+                    if (!monthlyRes.ok) return [] as ArchiveGame[]
+                    const monthlyData = (await monthlyRes.json()) as MonthlyArchiveResponse
+                    return monthlyData.games ?? []
+                })
+            )
+
+            const topRecentGames = monthlyGamesResponses
+                .flat()
+                .map((game) => toRecentGame(game, cleanUsername))
+                .filter((game): game is RecentGame => game !== null)
+                .sort((a, b) => (b.playedAt ?? 0) - (a.playedAt ?? 0))
+                .slice(0, 10)
 
             setProfile(profileData)
             setStats(statsData)
+            setRecentGames(topRecentGames)
         } catch (err) {
             const message = err instanceof Error ? err.message : "Unknown request error."
             setError(message)
             setProfile(null)
             setStats(null)
+            setRecentGames([])
         } finally {
             setLoading(false)
         }
@@ -313,6 +435,43 @@ export default function Dashboard() {
                             icon={<FaSun className="text-orange-500" aria-hidden="true" />}
                         />
                     </section>
+
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Recent Games</CardTitle>
+                            <CardDescription>Latest games from Chess.com monthly archives.</CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                            {recentGames.length === 0 ? (
+                                <p className="text-sm text-muted-foreground">No recent games found in the latest archives.</p>
+                            ) : (
+                                <ul className="space-y-2">
+                                    {recentGames.map((game) => (
+                                        <li
+                                            key={game.id}
+                                            className="flex flex-col gap-2 rounded-lg border border-border/70 px-3 py-2 text-sm sm:flex-row sm:items-center sm:justify-between"
+                                        >
+                                            <div className="flex flex-wrap items-center gap-2">
+                                                <span className="inline-flex items-center">{resultIcon(game.result)}</span>
+                                                <span className="font-medium">
+                                                    {game.whitePlayer} vs {game.blackPlayer}
+                                                </span>
+                                            </div>
+                                            <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                                                <span className="inline-flex items-center">{timeClassIcon(game.timeClass)}</span>
+                                                {/* <span>{game.timeControl}</span> */}
+                                                <span>{game.rated ? "Rated" : "Unrated"}</span>
+                                                <span>
+                                                    {game.whiteRating ?? "-"} - {game.blackRating ?? "-"}
+                                                </span>
+                                                <span>{formatDate(game.playedAt)}</span>
+                                            </div>
+                                        </li>
+                                    ))}
+                                </ul>
+                            )}
+                        </CardContent>
+                    </Card>
                 </>
             )}
         </main>
