@@ -9,12 +9,10 @@ import {
     NavigationMenuList,
 } from "./components/ui/navigation-menu"
 import Dashboard from "./pages/Dashboard"
-import Test from "./pages/Test"
 import Welcome from "./pages/Welcome"
 
 const navItems = [
     { to: "/", label: "Welcome" },
-    { to: "/test", label: "Test" },
     { to: "/dashboard", label: "Dashboard" },
 ]
 
@@ -61,7 +59,6 @@ export default function App() {
 
             <Routes>
                 <Route path="/" element={<Welcome />} />
-                <Route path="/test" element={<Test />} />
                 <Route path="/dashboard" element={<Dashboard />} />
             </Routes>
         </BrowserRouter>

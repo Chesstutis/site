@@ -1,6 +1,6 @@
 
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from "react"
-import { useSearchParams } from "react-router-dom"
+import { useCallback, useEffect, useState } from "react"
+import { useNavigate, useSearchParams } from "react-router-dom"
 import {
     FaBullseye,
     FaCircle,
@@ -27,8 +27,9 @@ import {
     CardHeader,
     CardTitle,
 } from "../components/ui/card"
-import { Input } from "../components/ui/input"
 import { Skeleton } from "../components/ui/skeleton"
+
+const SESSION_USERNAME_KEY = "chess-session-username"
 
 type ChessRecord = {
     win?: number
@@ -213,23 +214,27 @@ function StatCard({ label, stats, icon }: StatCardProps) {
 }
 
 export default function Dashboard() {
-    const [searchParams, setSearchParams] = useSearchParams()
-    const initialQueryUsername = useMemo(
-        () => searchParams.get("username")?.trim() ?? "",
-        [searchParams]
-    )
+    const navigate = useNavigate()
+    const [searchParams] = useSearchParams()
+    const [username] = useState(() => {
+        const storedUsername = sessionStorage.getItem(SESSION_USERNAME_KEY)?.trim().toLowerCase() ?? ""
+        if (storedUsername) {
+            return storedUsername
+        }
 
-    const [username, setUsername] = useState(initialQueryUsername)
+        return searchParams.get("username")?.trim().toLowerCase() ?? ""
+    })
     const [profile, setProfile] = useState<PlayerProfile | null>(null)
     const [stats, setStats] = useState<ChessStats | null>(null)
     const [recentGames, setRecentGames] = useState<RecentGame[]>([])
     const [loading, setLoading] = useState(false)
     const [error, setError] = useState("")
+    const [analysisLoading, setAnalysisLoading] = useState(false)
+    const [analysisMessage, setAnalysisMessage] = useState("")
 
     const fetchPlayerData = useCallback(async (rawUsername: string) => {
         const cleanUsername = rawUsername.trim().toLowerCase()
         if (!cleanUsername) {
-            setError("Enter a username to search.")
             return
         }
 
@@ -294,16 +299,46 @@ export default function Dashboard() {
     }, [])
 
     useEffect(() => {
-        if (!initialQueryUsername) return
-        setUsername(initialQueryUsername)
-        void fetchPlayerData(initialQueryUsername)
-    }, [fetchPlayerData, initialQueryUsername])
+        if (!username) {
+            navigate("/", { replace: true })
+            return
+        }
 
-    const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-        e.preventDefault()
-        const cleanUsername = username.trim().toLowerCase()
-        setSearchParams(cleanUsername ? { username: cleanUsername } : {})
-        await fetchPlayerData(cleanUsername)
+        sessionStorage.setItem(SESSION_USERNAME_KEY, username)
+        void fetchPlayerData(username)
+    }, [fetchPlayerData, navigate, username])
+
+    const handleAnalyzeGames = async () => {
+        if (!username) {
+            setAnalysisMessage("Set a username first.")
+            return
+        }
+
+        setAnalysisLoading(true)
+        setAnalysisMessage("")
+
+        try {
+            const response = await fetch("/api/analyze", {
+                method: "POST",
+                headers: {
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify({ username }),
+            })
+
+            const message = await response.text()
+
+            if (!response.ok) {
+                throw new Error(message || "Could not request game analysis.")
+            }
+
+            setAnalysisMessage(message || "Analysis request sent.")
+        } catch (err) {
+            const message = err instanceof Error ? err.message : "Unknown request error."
+            setAnalysisMessage(message)
+        } finally {
+            setAnalysisLoading(false)
+        }
     }
 
     return (
@@ -315,23 +350,15 @@ export default function Dashboard() {
                         Chess.com Dashboard
                     </CardTitle>
                     <CardDescription>
-                        Search any player and load profile + rating stats from the public API.
+                        Signed in as <span className="font-medium text-foreground">{username}</span>. Your session keeps this account until you change it from the welcome screen.
                     </CardDescription>
                 </CardHeader>
-                <CardContent>
-                    <form onSubmit={handleSubmit} className="flex flex-col gap-3 sm:flex-row">
-                        <Input
-                            type="text"
-                            placeholder="Enter Chess.com username"
-                            value={username}
-                            onChange={(event) => setUsername(event.target.value)}
-                            aria-label="Chess.com username"
-                        />
-                        <Button type="submit" className="sm:w-auto" disabled={loading}>
-                            {loading ? "Loading..." : "Load Player"}
-                        </Button>
-                    </form>
-                    {error && <p className="mt-3 text-sm text-destructive">{error}</p>}
+                <CardContent className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <p className="text-sm text-muted-foreground">
+                        If you want to switch accounts, go back to the welcome page and start a new session.
+                    </p>
+                    <Button type="button" variant="secondary" onClick={() => navigate("/")}>Change username</Button>
+                    {error && <p className="text-sm text-destructive sm:col-span-2">{error}</p>}
                 </CardContent>
             </Card>
 
@@ -437,9 +464,21 @@ export default function Dashboard() {
                     </section>
 
                     <Card>
-                        <CardHeader>
-                            <CardTitle>Recent Games</CardTitle>
-                            <CardDescription>Latest games from Chess.com monthly archives.</CardDescription>
+                        <CardHeader className="relative gap-3 pr-36">
+                            <div>
+                                <CardTitle>Recent Games</CardTitle>
+                                <CardDescription>Latest games from Chess.com monthly archives.</CardDescription>
+                            </div>
+                            <div className="absolute top-4 right-4 flex flex-col items-end gap-2">
+                                <Button type="button" variant="secondary" onClick={handleAnalyzeGames} disabled={analysisLoading || loading}>
+                                    {analysisLoading ? "Analyzing..." : "Learn from your mistakes"}
+                                </Button>
+                                {analysisMessage ? (
+                                    <p className="max-w-xs text-right text-xs text-muted-foreground sm:text-sm">
+                                        {analysisMessage}
+                                    </p>
+                                ) : null}
+                            </div>
                         </CardHeader>
                         <CardContent>
                             {recentGames.length === 0 ? (
