@@ -1,67 +1,67 @@
-import { BrowserRouter, Link, Route, Routes } from "react-router-dom"
-import { Moon, Sun } from "lucide-react"
-
-import { Button } from "./components/ui/button"
-import {
-    NavigationMenu,
-    NavigationMenuItem,
-    NavigationMenuLink,
-    NavigationMenuList,
-} from "./components/ui/navigation-menu"
-import Dashboard from "./pages/Dashboard"
-import Welcome from "./pages/Welcome"
-
-const navItems = [
-    { to: "/", label: "Welcome" },
-    { to: "/dashboard", label: "Dashboard" },
-]
-
-function toggleTheme() {
-    document.documentElement.classList.toggle("dark")
-}
+import React, { useState, useEffect } from "react";
+import { ChessPuzzle } from "@react-chess-tools/react-chess-puzzle";
+// im lazy and i just want this shit to work already
+const dataUrl = "https://api.chess.com/pub/player/alex121563/games/2026/04"
+const apiUrl = "http://localhost:8080/api/analyze"
 
 export default function App() {
+    const [data, setData] = useState([]);
+    const [dataIsLoaded, setDataIsLoaded] = useState(false);
+   
+    // get game data from chess.com
+    useEffect(() => {
+        fetch(dataUrl)
+            .then((res) => res.json())
+            .then((json) => {
+                setData(json);
+                setDataIsLoaded(true);
+            });
+    }, []);
+    useEffect(() => {
+        if (dataIsLoaded) console.log(data);
+    }, [data])
+
+    type Puzzle = {
+        fen: string,
+        best_move: string,
+        player_move: string,
+    }
+
+    const [puzzles, setPuzzles] = useState<Puzzle[]>([]);
+    // analyze games with the API
+    const requestOptions = {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json'},
+        body: JSON.stringify(data)
+    }
+    useEffect(() => {
+        if (!dataIsLoaded) return;
+        fetch(apiUrl, requestOptions)
+            .then(res => res.json())
+            .then(json => setPuzzles(json))
+    }, [dataIsLoaded])
+    useEffect(() => {
+        console.log(puzzles)
+    }, [puzzles])
+
+    if (puzzles.length === 0) {
+        return <h1>Loading...</h1>
+    }
+
+    const puzzle = {
+        fen: puzzles[0].fen,
+        moves: [puzzles[0].best_move],
+        makeFirstMove: false,
+    };
+
     return (
-        <BrowserRouter>
-            <header className="border-b bg-background/80 backdrop-blur supports-backdrop-filter:bg-background/70">
-                <div className="relative mx-auto w-full max-w-5xl px-4 py-3">
-                    <div className="absolute top-1/2 right-4 z-20 -translate-y-1/2">
-                        <Button
-                            type="button"
-                            variant="ghost"
-                            size="icon-sm"
-                            onClick={toggleTheme}
-                            className="rounded-full"
-                            aria-label="Toggle dark mode"
-                            title="Toggle dark mode"
-                        >
-                            <Sun className="hidden dark:block" aria-hidden="true" />
-                            <Moon className="block dark:hidden" aria-hidden="true" />
-                        </Button>
-                    </div>
-
-                    <NavigationMenu viewport={false} className="max-w-none w-full">
-                        <NavigationMenuList className="w-full flex-wrap justify-center gap-2 pr-12 sm:gap-3 sm:pr-14">
-                            {navItems.map((item) => (
-                                <NavigationMenuItem key={item.to}>
-                                    <NavigationMenuLink
-                                        asChild
-                                        className="rounded-full px-4 py-2 text-base font-medium"
-                                    >
-                                        <Link to={item.to}>{item.label}</Link>
-                                    </NavigationMenuLink>
-                                </NavigationMenuItem>
-                            ))}
-                        </NavigationMenuList>
-                    </NavigationMenu>
-                </div>
-            </header>
-
-            <Routes>
-                <Route path="/" element={<Welcome />} />
-                <Route path="/dashboard" element={<Dashboard />} />
-            </Routes>
-        </BrowserRouter>
-    )
+        <>
+        <h1>last time you played {puzzles[0].player_move}. See if you can find a better move</h1>
+        <ChessPuzzle.Root puzzle={puzzle}>
+            <ChessPuzzle.Board className="w-96 max-w-full" />
+            <ChessPuzzle.Reset>Restart</ChessPuzzle.Reset>
+            <ChessPuzzle.Hint>Get Hint</ChessPuzzle.Hint>
+        </ChessPuzzle.Root>
+        </>
+    );
 }
-
