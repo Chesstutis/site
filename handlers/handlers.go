@@ -47,26 +47,35 @@ type GamesList struct {
 }
 
 func (h *Handler) AnalyzeGames(w http.ResponseWriter, r *http.Request) {
-	var games GamesList
+	var rawGames GamesList
 
-	err := json.NewDecoder(r.Body).Decode(&games)
+	err := json.NewDecoder(r.Body).Decode(&rawGames)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	pgn, err := chess.PGN(strings.NewReader(games.Games[1].Pgn))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	game := chess.NewGame(pgn)
 
-	gameAnalysis, err := h.Analyzer.AnalyzeGame(game)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+	var games []*chess.Game
+	for _, rawGamePGN := range rawGames.Games {
+		pgn, err := chess.PGN(strings.NewReader(rawGamePGN.Pgn))
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		games = append(games, chess.NewGame(pgn))
 	}
+
+
+	var analyzedGames []analyzer.GameAnalysis
+	for _, game := range games {
+		gameAnalysis, err := h.Analyzer.AnalyzeGame(game)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		}
+		analyzedGames = append(analyzedGames, *gameAnalysis)
+	}
+
 
 	type PuzzleResponse struct {
 		Fen        string `json:"fen"`
@@ -76,12 +85,14 @@ func (h *Handler) AnalyzeGames(w http.ResponseWriter, r *http.Request) {
 
 	uci := chess.UCINotation{}
 
-	puzzleResponses := make([]PuzzleResponse, len(gameAnalysis.Puzzles))
-	for i, p := range gameAnalysis.Puzzles {
-		puzzleResponses[i] = PuzzleResponse{
-			Fen:        p.Position.String(),
-			BestMove:   uci.Encode(p.Position, p.BestMove),
-			PlayerMove: uci.Encode(p.Position, p.PlayerMove),
+	var puzzleResponses []PuzzleResponse
+	for _, gameAnalysis := range analyzedGames {
+		for _, p := range gameAnalysis.Puzzles {
+			puzzleResponses = append(puzzleResponses, PuzzleResponse{
+				Fen:        p.Position.String(),
+				BestMove:   uci.Encode(p.Position, p.BestMove),
+				PlayerMove: uci.Encode(p.Position, p.PlayerMove),
+			})
 		}
 	}
 	render.JSON(w, r, puzzleResponses)
