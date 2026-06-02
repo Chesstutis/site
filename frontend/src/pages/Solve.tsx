@@ -1,36 +1,52 @@
 import React, { useState, useEffect } from "react";
 import { ChessPuzzle } from "@react-chess-tools/react-chess-puzzle";
 
-const username = localStorage.getItem("username")
 
-// im lazy and i just want this shit to work already
-const dataUrl = `https://api.chess.com/pub/player/${username}/games/2026/03`
+const dataUrl = (uname: string) => {
+    return `https://api.chess.com/pub/player/${uname}/games/2026/03`
+}
 const apiUrl = "http://localhost:8080/api/analyze"
 
+type PuzzleResponse = {
+    fen: string,
+    best_move: string,
+    player_move: string,
+}
 
-export default function Solve() {
+type Puzzle = {
+    fen: string,
+    moves: string[],
+    makeFirstMove: boolean,
+}
+
+type SolveProps = {
+    username: string;
+}
+
+export default function Solve({ username }: SolveProps ) {
     const [data, setData] = useState([]);
     const [dataIsLoaded, setDataIsLoaded] = useState(false);
     const [puzzleIndex, setPuzzleIndex] = useState(0);
 
     // get game data from chess.com
     useEffect(() => {
-        fetch(dataUrl)
+        if (!username) return;
+
+        setData([]);
+        setDataIsLoaded(false);
+        setPuzzleIndex(0);
+        setPuzzlesResponse([]);
+
+        fetch(dataUrl(username))
             .then((res) => res.json())
             .then((json) => {
                 setData(json);
                 setDataIsLoaded(true);
             });
-    }, []);
+    }, [username]);
     useEffect(() => {
         if (dataIsLoaded) console.log(data);
     }, [data])
-
-    type PuzzleResponse = {
-        fen: string,
-        best_move: string,
-        player_move: string,
-    }
 
     const [puzzlesResponse, setPuzzlesResponse] = useState<PuzzleResponse[]>([]);
     // analyze games with the API
@@ -51,12 +67,6 @@ export default function Solve() {
 
     if (puzzlesResponse.length === 0) {
         return <h1>Loading...</h1>
-    }
-
-    type Puzzle = {
-        fen: string,
-        moves: string[],
-        makeFirstMove: boolean,
     }
 
     let puzzles: Puzzle[] = []

@@ -1,20 +1,24 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom";
 
-export default function Welcome() {
-    let [username, setUsername] = useState<string>("")
+type WelcomeProps = {
+    setUsername: (username: string) => void;
+}
+
+export default function Welcome({ setUsername }: WelcomeProps) {
     const navigate = useNavigate();
+    const [localUsername, setLocalUsername] = useState<string>("");
 
     // this is probably dumb
     const handleSolve = () => {
-        localStorage.setItem("username", username);
-        navigate("/solve")
+        setUsername(localUsername)
+        navigate("/solve");
     }
 
     return (
         <>
             <label htmlFor="username">Enter your chess.com username:
-                <input type="text" value={username} onChange={(e) => setUsername(e.target.value)} />
+                <input type="text" value={localUsername} onChange={(e) => setLocalUsername(e.target.value)} />
             </label>
 
             <button onClick={handleSolve}>
