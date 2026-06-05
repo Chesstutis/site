@@ -78,17 +78,17 @@ export default function Solve({ username }: SolveProps) {
             .then((json) => setPuzzlesResponse(json));
     }, [dataIsLoaded, data]);
 
-    if (!archivesLoaded) {
-        return <h1>Loading archives...</h1>;
-    }
+    // if (!archivesLoaded) {
+    //     return <h1>Loading archives...</h1>;
+    // }
 
-    if (!dataUrl) {
-        return <h1>Could not find any game archives</h1>;
-    }
+    // if (!dataUrl) {
+    //     return <h1>Could not find any game archives</h1>;
+    // }
 
-    if (puzzlesResponse.length === 0) {
-        return <h1>Loading...</h1>;
-    }
+    // if (puzzlesResponse.length === 0) {
+    //     return <h1>Loading...</h1>;
+    // }
 
     const puzzles: Puzzle[] = puzzlesResponse.map((p) => ({
         fen: p.fen,
@@ -98,21 +98,65 @@ export default function Solve({ username }: SolveProps) {
 
     const currentPuzzle = puzzles[puzzleIndex];
 
+    const toArrow = (uciMove: string) => ({
+        startSquare: uciMove.slice(0, 2),
+        endSquare: uciMove.slice(2, 4),
+        color: "#ef4444"
+    })
+
     const handleSolve = () => {
         setPuzzleIndex((prev) => Math.min(prev + 1, puzzles.length - 1));
     };
 
-    return (
-        <>
-            <h1>
-                last time you played {puzzlesResponse[puzzleIndex].player_move}. See if
-                you can find a better move
+    const statusCard = (
+        <div className="w-full rounded-3xl border border-white/10 bg-white/5 p-8 text-center shadow-2xl shadow-black/40 backdrop-blur">
+            <p className="text-sm font-medium uppercase tracking-[0.35em] text-emerald-300/80">
+                Chess Puzzle Solver
+            </p>
+            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                Loading your puzzles
             </h1>
-            <ChessPuzzle.Root key={puzzleIndex} puzzle={currentPuzzle} onSolve={handleSolve}>
-                <ChessPuzzle.Board className="w-96 max-w-full" />
-                <ChessPuzzle.Reset>Restart</ChessPuzzle.Reset>
-                <ChessPuzzle.Hint>Get Hint</ChessPuzzle.Hint>
-            </ChessPuzzle.Root>
-        </>
+            <p className="mt-3 text-sm leading-6 text-slate-300">
+                We’re pulling your recent games and analyzing your mistakes.
+            </p>
+        </div>
+    );
+
+    return (
+        <main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100">
+            <section className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-3xl items-center justify-center">
+                {(!archivesLoaded || !dataUrl || puzzlesResponse.length === 0) ? (
+                    statusCard
+                ) : (
+                    <div className="w-full rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/40 backdrop-blur sm:p-8">
+                        <div className="mb-6 text-center">
+                            <p className="text-sm font-medium uppercase tracking-[0.35em] text-emerald-300/80">
+                                Chess Puzzle Solver
+                            </p>
+                            <h1 className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+                                Last time you played {puzzlesResponse[puzzleIndex].player_move}
+                            </h1>
+                            <p className="mt-3 text-sm leading-6 text-slate-300">
+                                See if you can find a better move.
+                            </p>
+                        </div>
+
+                        <div className="flex flex-col items-center gap-5">
+                            <ChessPuzzle.Root key={puzzleIndex} puzzle={currentPuzzle} onSolve={handleSolve}>
+                                <ChessPuzzle.Board className="w-full max-w-md"
+                                    options={{
+                                        arrows: [toArrow(puzzlesResponse[puzzleIndex].player_move)]
+                                    }}
+                                />
+                                <div className="mt-5 flex w-full flex-wrap justify-center gap-3">
+                                    <ChessPuzzle.Reset>Restart</ChessPuzzle.Reset>
+                                    <ChessPuzzle.Hint>Get Hint</ChessPuzzle.Hint>
+                                </div>
+                            </ChessPuzzle.Root>
+                        </div>
+                    </div>
+                )}
+            </section>
+        </main>
     );
 }
