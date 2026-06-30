@@ -2,8 +2,11 @@ package main
 
 import (
 	"context"
+	"embed"
+	"io/fs"
 	"net/http"
 	"os"
+	"fmt"
 
 	"github.com/chesstutis/analyzer"
 	"github.com/chesstutis/site/db"
@@ -16,6 +19,9 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 )
+
+//go:embed frontend/dist
+var frontendDist embed.FS
 
 func main() {
 	godotenv.Load()
@@ -52,5 +58,39 @@ func main() {
 		chi.Post("/analyze", h.AnalyzeGames)
 	})
 
-	http.ListenAndServe(":"+os.Getenv("SERVER_PORT"), r)
+	distFS, err := fs.Sub(frontendDist, "frontend/dist")
+	if err != nil {
+		panic(err)
+	}
+
+	// assets := http.FileServer(http.FS(distFS))
+
+	serveIndex := func(w http.ResponseWriter, r *http.Request) {
+		index, err := fs.ReadFile(distFS, "index.html")
+		if err != nil {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		_, _ = w.Write(index)
+	}
+
+	r.Get("/", serveIndex)
+	r.Get("/home", serveIndex)
+	r.Get("/solve", serveIndex)
+
+	r.Handle("/assets/*", http.FileServer(http.FS(distFS)))
+
+	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			serveIndex(w, r)
+			return
+		}
+		http.NotFound(w, r)
+	})
+
+	fmt.Printf("listening on port %s\n", os.Getenv("SERVER_PORT"))
+	if err := http.ListenAndServe(":"+os.Getenv("SERVER_PORT"), r); err != nil {
+		panic(err)
+	}
 }

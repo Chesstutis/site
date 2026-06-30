@@ -43,7 +43,8 @@ type ChessGame struct {
 }
 
 type GamesList struct {
-	Games []ChessGame `json:"games"`
+	Games    []ChessGame `json:"games"`
+	Username string      `json:"username"`
 }
 
 func (h *Handler) AnalyzeGames(w http.ResponseWriter, r *http.Request) {
@@ -55,7 +56,6 @@ func (h *Handler) AnalyzeGames(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	var games []*chess.Game
 	for _, rawGamePGN := range rawGames.Games {
 		pgn, err := chess.PGN(strings.NewReader(rawGamePGN.Pgn))
@@ -66,16 +66,23 @@ func (h *Handler) AnalyzeGames(w http.ResponseWriter, r *http.Request) {
 		games = append(games, chess.NewGame(pgn))
 	}
 
-
 	var analyzedGames []analyzer.GameAnalysis
-	for _, game := range games {
-		gameAnalysis, err := h.Analyzer.AnalyzeGame(game)
+	for i, game := range games {
+		var p chess.Color
+		if strings.EqualFold(rawGames.Games[i].WhitePlayer.Username, rawGames.Username) {
+			p = chess.White
+		} else if strings.EqualFold(rawGames.Games[i].BlackPlayer.Username, rawGames.Username) {
+			p = chess.Black
+		} else {
+			p = chess.NoColor
+		}
+
+		gameAnalysis, err := h.Analyzer.AnalyzeGame(game, p)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
 		analyzedGames = append(analyzedGames, *gameAnalysis)
 	}
-
 
 	type PuzzleResponse struct {
 		Fen        string `json:"fen"`
