@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"embed"
+	"fmt"
 	"io/fs"
 	"net/http"
 	"os"
-	"fmt"
 
 	"github.com/chesstutis/analyzer"
 	"github.com/chesstutis/site/db"
@@ -58,12 +58,13 @@ func main() {
 		chi.Post("/analyze", h.AnalyzeGames)
 	})
 
+	// ==============================
+	// || build to a single binary ||
+	// ===============================
 	distFS, err := fs.Sub(frontendDist, "frontend/dist")
 	if err != nil {
 		panic(err)
 	}
-
-	// assets := http.FileServer(http.FS(distFS))
 
 	serveIndex := func(w http.ResponseWriter, r *http.Request) {
 		index, err := fs.ReadFile(distFS, "index.html")
