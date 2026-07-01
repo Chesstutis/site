@@ -87,7 +87,7 @@ export default function Solve({ username }: SolveProps) {
 	useEffect(() => {
 		if (!dataIsLoaded) return;
 		if (!data) return;
-		fetch(apiUrl, {
+		fetch("/api/analyze", {
 			method: "POST",
 			headers: { "Content-Type": "application/json" },
 			body: JSON.stringify({

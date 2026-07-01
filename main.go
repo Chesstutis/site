@@ -26,7 +26,7 @@ var frontendDist embed.FS
 func main() {
 	godotenv.Load()
 	dbpool := db.New(context.Background(), os.Getenv("DATABASE_URL"))
-	eng, err := uci.New("stockfish")
+	eng, err := uci.New(os.Getenv("STOCKFISH_PATH"))
 	if err != nil {
 		panic(err)
 	}
