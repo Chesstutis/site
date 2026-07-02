@@ -4,8 +4,6 @@ import { ChessPuzzle } from "@react-chess-tools/react-chess-puzzle";
 const archivesUrl = (uname: string) =>
 	`https://api.chess.com/pub/player/${uname}/games/archives`;
 
-const apiUrl = "http://localhost:8080/api/analyze";
-
 type PuzzleResponse = {
 	fen: string;
 	best_move: string;
