@@ -10,7 +10,6 @@ import (
 
 	"github.com/chesstutis/analyzer"
 	"github.com/chesstutis/site/db"
-	"github.com/chesstutis/site/handlers"
 	"github.com/corentings/chess/v2/uci"
 
 	"github.com/joho/godotenv"
@@ -19,9 +18,8 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
-	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/collectors"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
+	"github.com/chesstutis/site/internal/handlers"
+	"github.com/chesstutis/site/internal/observability"
 )
 
 //go:embed frontend/dist
@@ -55,14 +53,7 @@ func main() {
 		AllowCredentials: false,
 		MaxAge:           300, // Maximum value not ignored by any of major browsers
 	}))
-
-	reg := prometheus.NewRegistry()
-	reg.MustRegister(
-		collectors.NewGoCollector(),
-		collectors.NewProcessCollector(collectors.ProcessCollectorOpts{}),
-	)
-
-	r.Handle("/metrics", promhttp.HandlerFor(reg, promhttp.HandlerOpts{}))
+	r.Handle("/metrics", observability.HandleMetrics())
 
 	r.Get("/ping", h.PingHandler)
 
@@ -70,9 +61,6 @@ func main() {
 		chi.Post("/analyze", h.AnalyzeGames)
 	})
 
-	// ==============================
-	// || build to a single binary ||
-	// ===============================
 	distFS, err := fs.Sub(frontendDist, "frontend/dist")
 	if err != nil {
 		panic(err)
