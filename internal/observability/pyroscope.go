@@ -5,7 +5,7 @@ import "github.com/grafana/pyroscope-go"
 func PyroConfig() pyroscope.Config {
 	return pyroscope.Config{
 		ApplicationName: "chesstutis.com",
-		ServerAddress:   "http://idk",
+		ServerAddress:   "http://localhost:4040",
 		Logger:          pyroscope.StandardLogger,
 		ProfileTypes: []pyroscope.ProfileType{
 			pyroscope.ProfileCPU,
