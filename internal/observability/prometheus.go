@@ -9,7 +9,6 @@ import (
 )
 
 func HandleMetrics() http.Handler {
-
 	reg := prometheus.NewRegistry()
 	reg.MustRegister(
 		collectors.NewGoCollector(),

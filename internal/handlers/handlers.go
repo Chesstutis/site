@@ -5,7 +5,7 @@ import (
 	"strings"
 
 	"github.com/chesstutis/analyzer"
-	"github.com/chesstutis/site/db"
+	"github.com/chesstutis/site/internal/db"
 	"github.com/chesstutis/site/internal/requests"
 	"github.com/corentings/chess/v2"
 

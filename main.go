@@ -9,7 +9,6 @@ import (
 	"os"
 
 	"github.com/chesstutis/analyzer"
-	"github.com/chesstutis/site/db"
 	"github.com/corentings/chess/v2/uci"
 
 	"github.com/joho/godotenv"
@@ -18,14 +17,18 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	"github.com/chesstutis/site/internal/db"
 	"github.com/chesstutis/site/internal/handlers"
 	"github.com/chesstutis/site/internal/observability"
+
+	"github.com/grafana/pyroscope-go"
 )
 
 //go:embed frontend/dist
 var frontendDist embed.FS
 
 func main() {
+	pyroscope.Start(observability.PyroConfig())
 	godotenv.Load()
 	dbpool := db.New(context.Background(), os.Getenv("DATABASE_URL"))
 	eng, err := uci.New(os.Getenv("STOCKFISH_PATH"))
@@ -53,10 +56,9 @@ func main() {
 		AllowCredentials: false,
 		MaxAge:           300, // Maximum value not ignored by any of major browsers
 	}))
+
 	r.Handle("/metrics", observability.HandleMetrics())
-
 	r.Get("/ping", h.PingHandler)
-
 	r.Route("/api", func(chi chi.Router) {
 		chi.Post("/analyze", h.AnalyzeGames)
 	})
