@@ -1,22 +1,4 @@
-
-type PuzzleResponse = {
-	fen: string;
-	best_move: string;
-	player_move: string;
-};
-
-type ChessPlayer = {
-	rating: number;
-	result: string;
-	username: string;
-};
-
-type ChessGame = {
-	pgn: string;
-	rules: string;
-	white: ChessPlayer;
-	black: ChessPlayer;
-};
+import type { PuzzleResponse, ChessGame } from "../types/chess"
 
 export const analyzeGames = async (username: string, games: ChessGame[]): Promise<PuzzleResponse[]> => {
     const res = await fetch("/api/analyze", {

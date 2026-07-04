@@ -49,17 +49,17 @@ func (h *Handler) AnalyzeGames(w http.ResponseWriter, r *http.Request) {
 	//! also i should probably do the username parsing first and package that in the struct...
 	var analyzedGames []analyzer.GameAnalysis
 	for i, game := range parsedGames {
-		var p chess.Color
+		var playerColor chess.Color
 		if strings.EqualFold(rawGames.Games[i].WhitePlayer.Username, rawGames.Username) {
-			p = chess.White
+			playerColor = chess.White
 		} else if strings.EqualFold(rawGames.Games[i].BlackPlayer.Username, rawGames.Username) {
-			p = chess.Black
+			playerColor = chess.Black
 		} else {
 			// p = chess.NoColor
 			http.Error(w, "invalid username", http.StatusBadRequest)
 		}
 
-		gameAnalysis, err := h.Analyzer.AnalyzeGame(game, p)
+		gameAnalysis, err := h.Analyzer.AnalyzeGame(game, playerColor)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}

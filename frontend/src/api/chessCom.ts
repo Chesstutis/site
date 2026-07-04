@@ -1,23 +1,4 @@
-type ArchivesResponse = {
-	archives: string[];
-};
-
-type ChessPlayer = {
-	rating: number;
-	result: string;
-	username: string;
-};
-
-type ChessGame = {
-	pgn: string;
-	rules: string;
-	white: ChessPlayer;
-	black: ChessPlayer;
-};
-
-type GamesArchiveResponse = {
-	games: ChessGame[];
-};
+import type { ArchivesResponse, GamesArchiveResponse } from "../types/chess";
 
 const archivesUrl = (uname: string) => `https://api.chess.com/pub/player/${uname}/games/archives`;
 

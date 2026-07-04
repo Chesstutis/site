@@ -21,25 +21,29 @@ import (
 	"github.com/chesstutis/site/internal/handlers"
 	"github.com/chesstutis/site/internal/observability"
 
-	"github.com/grafana/pyroscope-go"
+	// "github.com/grafana/pyroscope-go"
 )
 
 //go:embed frontend/dist
 var frontendDist embed.FS
 
 func main() {
-	pyroscope.Start(observability.PyroConfig())
+	// pyroscope.Start(observability.PyroConfig())
 	godotenv.Load()
 	dbpool := db.New(context.Background(), os.Getenv("DATABASE_URL"))
+	defer dbpool.Pool.Close()
+
 	eng, err := uci.New(os.Getenv("STOCKFISH_PATH"))
 	if err != nil {
 		panic(err)
 	}
+	defer eng.Close()
 
 	a, err := analyzer.NewAnalyzer(eng, analyzer.DefaultConfig())
 	if err != nil {
 		panic(err)
 	}
+	defer a.Close()
 
 	r := chi.NewRouter()
 	h := handlers.New(dbpool, a)
@@ -47,14 +51,12 @@ func main() {
 	r.Use(middleware.Logger)
 
 	r.Use(cors.Handler(cors.Options{
-		// AllowedOrigins:   []string{"https://foo.com"}, // Use this to allow specific origin hosts
-		AllowedOrigins: []string{"https://*", "http://*"},
-		// AllowOriginFunc:  func(r *http.Request, origin string) bool { return true },
+		AllowedOrigins:   []string{"https://*", "http://*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		ExposedHeaders:   []string{"Link"},
 		AllowCredentials: false,
-		MaxAge:           300, // Maximum value not ignored by any of major browsers
+		MaxAge:           300,
 	}))
 
 	r.Handle("/metrics", observability.HandleMetrics())
