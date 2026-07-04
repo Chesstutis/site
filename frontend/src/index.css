@@ -1,1 +1,16 @@
 @import "tailwindcss";
+
+html,
+body,
+#root {
+	height: 100%;
+	min-height: 100%;
+	@apply bg-slate-950;
+}
+
+body {
+	margin: 0;
+	color-scheme: dark;
+	overflow-x: hidden;
+	-webkit-tap-highlight-color: transparent;
+}

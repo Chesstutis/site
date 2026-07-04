@@ -1,13 +1,12 @@
 package handlers
 
 import (
-	"encoding/json"
-	// "log"
 	"net/http"
 	"strings"
 
 	"github.com/chesstutis/analyzer"
-	"github.com/chesstutis/site/db"
+	"github.com/chesstutis/site/internal/db"
+	"github.com/chesstutis/site/internal/requests"
 	"github.com/corentings/chess/v2"
 
 	"github.com/go-chi/render"
@@ -29,55 +28,38 @@ func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("pong"))
 }
 
-type ChessPlayer struct {
-	Rating   uint16 `json:"rating"`
-	Result   string `json:"result"`
-	Username string `json:"username"`
-}
-
-type ChessGame struct {
-	Pgn         string      `json:"pgn"`
-	Rules       string      `json:"rules"`
-	WhitePlayer ChessPlayer `json:"white"`
-	BlackPlayer ChessPlayer `json:"black"`
-}
-
-type GamesList struct {
-	Games    []ChessGame `json:"games"`
-	Username string      `json:"username"`
-}
-
 func (h *Handler) AnalyzeGames(w http.ResponseWriter, r *http.Request) {
-	var rawGames GamesList
-
-	err := json.NewDecoder(r.Body).Decode(&rawGames)
+	rawGames, err := requests.ParseAnalysisRequest(r.Body) 
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 
-	var games []*chess.Game
+	var parsedGames []*chess.Game
 	for _, rawGamePGN := range rawGames.Games {
 		pgn, err := chess.PGN(strings.NewReader(rawGamePGN.Pgn))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		games = append(games, chess.NewGame(pgn))
+		parsedGames = append(parsedGames, chess.NewGame(pgn))
 	}
 
+	// TODO: this section should get replaced with pushing the games to PQueue to be analyzed and waiting for the result
+	//! also i should probably do the username parsing first and package that in the struct...
 	var analyzedGames []analyzer.GameAnalysis
-	for i, game := range games {
-		var p chess.Color
+	for i, game := range parsedGames {
+		var playerColor chess.Color
 		if strings.EqualFold(rawGames.Games[i].WhitePlayer.Username, rawGames.Username) {
-			p = chess.White
+			playerColor = chess.White
 		} else if strings.EqualFold(rawGames.Games[i].BlackPlayer.Username, rawGames.Username) {
-			p = chess.Black
+			playerColor = chess.Black
 		} else {
-			p = chess.NoColor
+			// p = chess.NoColor
+			http.Error(w, "invalid username", http.StatusBadRequest)
 		}
 
-		gameAnalysis, err := h.Analyzer.AnalyzeGame(game, p)
+		gameAnalysis, err := h.Analyzer.AnalyzeGame(game, playerColor)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		}
@@ -103,7 +85,4 @@ func (h *Handler) AnalyzeGames(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	render.JSON(w, r, puzzleResponses)
-
-	// log.Println(gameAnalysis.Puzzles)
-	// render.JSON(w, r, gameAnalysis.Puzzles)
 }
