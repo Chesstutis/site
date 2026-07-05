@@ -30,7 +30,10 @@ var frontendDist embed.FS
 func main() {
 	// pyroscope.Start(observability.PyroConfig())
 	godotenv.Load()
-	dbpool := db.New(context.Background(), os.Getenv("DATABASE_URL"))
+	dbpool, err := db.New(context.Background(), os.Getenv("DATABASE_URL"))
+	if err != nil {
+		panic(err)
+	}
 	defer dbpool.Pool.Close()
 
 	eng, err := uci.New(os.Getenv("STOCKFISH_PATH"))

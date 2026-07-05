@@ -1,10 +1,20 @@
 import { useState, useEffect } from "react";
 import { ChessPuzzle } from "@react-chess-tools/react-chess-puzzle";
-import { analyzeGames } from "../api/chesstutis"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
+import {
+	Card,
+	CardContent,
+	CardDescription,
+	CardHeader,
+	CardTitle,
+} from "@/components/ui/card";
+import { Skeleton } from "@/components/ui/skeleton";
+import { analyzeGames } from "../api/chesstutis";
 import {
 	getArchives,
 	getGamesArchive,
-} from "../api/chessCom"
+} from "../api/chessCom";
 
 type PuzzleResponse = {
 	fen: string;
@@ -22,7 +32,7 @@ type SolveProps = {
 	username: string;
 };
 
-type Status = "idle" | "loading" | "ready" | "error"
+type Status = "idle" | "loading" | "ready" | "error";
 
 export default function Solve({ username }: SolveProps) {
 	const [status, setStatus] = useState<Status>("idle");
@@ -76,7 +86,7 @@ export default function Solve({ username }: SolveProps) {
 	const toArrow = (uciMove: string) => ({
 		startSquare: uciMove.slice(0, 2),
 		endSquare: uciMove.slice(2, 4),
-		color: "#ef4444",
+		color: "var(--destructive)",
 	});
 
 	const handleSolve = () => {
@@ -85,13 +95,19 @@ export default function Solve({ username }: SolveProps) {
 
 	if (!username) {
 		return (
-			<main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100">
+			<main className="min-h-screen bg-background px-4 py-8 text-foreground">
 				<section className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-3xl items-center justify-center">
-					<div className="w-full rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
-						<h1 className="text-3xl font-semibold text-white">
-							Enter a username first
-						</h1>
-					</div>
+					<Card className="w-full">
+						<CardContent>
+							<Alert>
+								<AlertTitle>Enter a username first</AlertTitle>
+								<AlertDescription>
+									Go back to the start screen and choose a
+									Chess.com username before loading puzzles.
+								</AlertDescription>
+							</Alert>
+						</CardContent>
+					</Card>
 				</section>
 			</main>
 		);
@@ -99,19 +115,25 @@ export default function Solve({ username }: SolveProps) {
 
 	if (status === "loading" || status === "idle") {
 		return (
-			<main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100">
+			<main className="min-h-screen bg-background px-4 py-8 text-foreground">
 				<section className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-3xl items-center justify-center">
-					<div className="w-full rounded-3xl border border-white/10 bg-white/5 p-8 text-center shadow-2xl shadow-black/40 backdrop-blur">
-						<p className="text-sm font-medium uppercase tracking-[0.35em] text-emerald-300/80">
-							Chess Puzzle Solver
-						</p>
-						<h1 className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-							Loading your puzzles
-						</h1>
-						<p className="mt-3 text-sm leading-6 text-slate-300">
-							We&apos;re pulling your recent games and analyzing your mistakes.
-						</p>
-					</div>
+					<Card className="w-full">
+						<CardHeader className="text-center">
+							<p className="text-sm font-medium uppercase tracking-widest text-primary">
+								Chess Puzzle Solver
+							</p>
+							<CardTitle className="text-3xl sm:text-4xl">
+								Loading your puzzles
+							</CardTitle>
+							<CardDescription>
+								We&apos;re pulling your recent games and
+								analyzing your mistakes.
+							</CardDescription>
+						</CardHeader>
+						<CardContent className="flex justify-center">
+							<Skeleton className="aspect-square w-full max-w-md" />
+						</CardContent>
+					</Card>
 				</section>
 			</main>
 		);
@@ -119,34 +141,40 @@ export default function Solve({ username }: SolveProps) {
 
 	if (status === "error" || !currentPuzzle || !currentPuzzleResponse) {
 		return (
-			<main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100">
+			<main className="min-h-screen bg-background px-4 py-8 text-foreground">
 				<section className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-3xl items-center justify-center">
-					<div className="w-full rounded-3xl border border-white/10 bg-white/5 p-8 text-center">
-						<h1 className="text-3xl font-semibold text-white">
-							Could not load puzzles
-						</h1>
-					</div>
+					<Card className="w-full">
+						<CardContent>
+							<Alert variant="destructive">
+								<AlertTitle>Could not load puzzles</AlertTitle>
+								<AlertDescription>
+									Try another username or reload the page.
+								</AlertDescription>
+							</Alert>
+						</CardContent>
+					</Card>
 				</section>
 			</main>
 		);
 	}
 
 	return (
-		<main className="min-h-screen bg-slate-950 px-4 py-8 text-slate-100">
+		<main className="min-h-screen bg-background px-4 py-8 text-foreground">
 			<section className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-3xl items-center justify-center">
-				<div className="w-full rounded-3xl border border-white/10 bg-white/5 p-6 shadow-2xl shadow-black/40 backdrop-blur sm:p-8">
-					<div className="mb-6 text-center">
-						<p className="text-sm font-medium uppercase tracking-[0.35em] text-emerald-300/80">
+				<Card className="w-full">
+					<CardHeader className="text-center">
+						<p className="text-sm font-medium uppercase tracking-widest text-primary">
 							Chess Puzzle Solver
 						</p>
-						<h1 className="mt-4 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
+						<CardTitle className="text-3xl sm:text-4xl">
 							Last time you played {currentPuzzleResponse.player_move}
-						</h1>
-						<p className="mt-3 text-sm leading-6 text-slate-300">
+						</CardTitle>
+						<CardDescription>
 							See if you can find a better move.
-						</p>
-					</div>
+						</CardDescription>
+					</CardHeader>
 
+					<CardContent>
 					<div className="flex flex-col items-center gap-5">
 						<ChessPuzzle.Root
 							key={puzzleIndex}
@@ -160,12 +188,19 @@ export default function Solve({ username }: SolveProps) {
 								}}
 							/>
 							<div className="mt-5 flex w-full flex-wrap justify-center gap-3">
-								<ChessPuzzle.Reset>Restart</ChessPuzzle.Reset>
-								<ChessPuzzle.Hint>Get Hint</ChessPuzzle.Hint>
+								<ChessPuzzle.Reset asChild>
+									<Button variant="outline">Restart</Button>
+								</ChessPuzzle.Reset>
+								<ChessPuzzle.Hint asChild>
+									<Button variant="secondary">
+										Get Hint
+									</Button>
+								</ChessPuzzle.Hint>
 							</div>
 						</ChessPuzzle.Root>
 					</div>
-				</div>
+					</CardContent>
+				</Card>
 			</section>
 		</main>
 	);
