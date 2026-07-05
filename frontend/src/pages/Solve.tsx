@@ -10,23 +10,13 @@ import {
 	CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { analyzeGames } from "../api/chesstutis";
+import { analyzeGames } from "@/api/chesstutis";
 import {
 	getArchives,
 	getGamesArchive,
 } from "../api/chessCom";
-
-type PuzzleResponse = {
-	fen: string;
-	best_move: string;
-	player_move: string;
-};
-
-type Puzzle = {
-	fen: string;
-	moves: string[];
-	makeFirstMove: boolean;
-};
+import { longToShortNotation } from "@/lib/chessUtils";
+import type { Puzzle, PuzzleResponse } from "@/types/chess"
 
 type SolveProps = {
 	username: string;
@@ -167,7 +157,7 @@ export default function Solve({ username }: SolveProps) {
 							Chess Puzzle Solver
 						</p>
 						<CardTitle className="text-3xl sm:text-4xl">
-							Last time you played {currentPuzzleResponse.player_move}
+							Last time you played {longToShortNotation(currentPuzzleResponse.player_move, currentPuzzleResponse.fen)}
 						</CardTitle>
 						<CardDescription>
 							See if you can find a better move.

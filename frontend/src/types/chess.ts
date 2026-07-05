@@ -24,3 +24,9 @@ export type PuzzleResponse = {
 	best_move: string;
 	player_move: string;
 };
+
+export type Puzzle = {
+	fen: string;
+	moves: string[];
+	makeFirstMove: boolean;
+};
