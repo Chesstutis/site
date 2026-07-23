@@ -20,7 +20,6 @@ import (
 	"github.com/chesstutis/site/internal/db"
 	"github.com/chesstutis/site/internal/handlers"
 	"github.com/chesstutis/site/internal/observability"
-
 	// "github.com/grafana/pyroscope-go"
 )
 
@@ -30,11 +29,13 @@ var frontendDist embed.FS
 func main() {
 	// pyroscope.Start(observability.PyroConfig())
 	godotenv.Load()
-	dbpool, err := db.New(context.Background(), os.Getenv("DATABASE_URL"))
+	dbpool, err := db.NewPool(context.Background(), os.Getenv("DATABASE_URL"))
 	if err != nil {
 		panic(err)
 	}
-	defer dbpool.Pool.Close()
+	defer dbpool.Close()
+
+	queries := db.New(dbpool)
 
 	eng, err := uci.New(os.Getenv("STOCKFISH_PATH"))
 	if err != nil {
@@ -49,7 +50,7 @@ func main() {
 	defer a.Close()
 
 	r := chi.NewRouter()
-	h := handlers.New(dbpool, a)
+	h := handlers.New(queries, a)
 
 	r.Use(middleware.Logger)
 

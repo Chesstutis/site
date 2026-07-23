@@ -13,13 +13,13 @@ import (
 )
 
 type Handler struct {
-	DB       *db.DB
+	Queries       *db.Queries
 	Analyzer *analyzer.Analyzer
 }
 
-func New(dbpool *db.DB, analyzer *analyzer.Analyzer) *Handler {
+func New(dbpool *db.Queries, analyzer *analyzer.Analyzer) *Handler {
 	return &Handler{
-		DB:       dbpool,
+		Queries:       dbpool,
 		Analyzer: analyzer,
 	}
 }
