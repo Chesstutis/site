@@ -64,8 +64,13 @@ func main() {
 
 	r.Handle("/metrics", observability.HandleMetrics())
 	r.Get("/ping", h.PingHandler)
-	r.Route("/api", func(chi chi.Router) {
-		chi.Post("/analyze", h.AnalyzeGames)
+	r.Route("/api", func(r chi.Router) {
+		r.Route("/auth", func(r chi.Router) {
+			// r.Post("/signup", h.Signup)
+			// r.Post("/login", h.Login)
+			// r.Post("/logout", h.Logout)
+		})
+		r.Post("/analyze", h.AnalyzeGames)
 	})
 
 	distFS, err := fs.Sub(frontendDist, "frontend/dist")
@@ -83,9 +88,12 @@ func main() {
 		_, _ = w.Write(index)
 	}
 
+	// frontend routes
 	r.Get("/", serveIndex)
 	r.Get("/home", serveIndex)
 	r.Get("/solve", serveIndex)
+	r.Get("/login", serveIndex)
+	r.Get("/signup", serveIndex)
 
 	r.Handle("/assets/*", http.FileServer(http.FS(distFS)))
 

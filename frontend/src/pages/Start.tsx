@@ -15,7 +15,7 @@ type WelcomeProps = {
 	setUsername: (username: string) => void;
 };
 
-export default function Welcome({ setUsername }: WelcomeProps) {
+export default function Start({ setUsername }: WelcomeProps) {
 	const navigate = useNavigate();
 	const [localUsername, setLocalUsername] = useState<string>("");
 
@@ -27,8 +27,8 @@ export default function Welcome({ setUsername }: WelcomeProps) {
 	};
 
 	return (
-		<main className="min-h-screen bg-background px-4 py-8 text-foreground">
-			<section className="mx-auto flex min-h-[calc(100vh-4rem)] max-w-md items-center justify-center">
+		<div className="flex flex-1 bg-background px-4 py-8 text-foreground">
+			<section className="mx-auto flex w-full max-w-md items-center justify-center">
 				<Card className="w-full">
 					<CardHeader className="text-center">
 						<p className="text-sm font-medium uppercase tracking-widest text-primary">
@@ -67,6 +67,6 @@ export default function Welcome({ setUsername }: WelcomeProps) {
 					</CardContent>
 				</Card>
 			</section>
-		</main>
+		</div>
 	);
 }
