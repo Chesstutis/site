@@ -49,7 +49,7 @@ export default function Home() {
                             practice the moves you actually missed.
                         </p>
                         <Link
-                            to="/"
+                            to="/start"
                             className={buttonVariants({
                                 size: "lg",
                                 className: "mt-8",

@@ -8,16 +8,16 @@ const navItems = [
 
 export default function Layout() {
     return (
-        <div className="flex min-h-screen flex-col bg-background text-foreground">
+        <div className="flex min-h-screen w-full min-w-0 flex-col overflow-x-clip bg-background text-foreground">
             <header className="border-b bg-card/90 backdrop-blur">
-                <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-6 px-4 sm:px-6">
+                <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-2 px-4 sm:gap-6 sm:px-6">
                     <NavLink
                         to="/"
-                        className="group flex items-center gap-3 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                        className="group flex min-w-0 items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:gap-3"
                         aria-label="Chesstutis.com home"
                     >
                         <span
-                            className="grid size-9 grid-cols-2 overflow-hidden rounded-lg border border-primary/30 shadow-xs"
+                            className="grid size-9 shrink-0 grid-cols-2 overflow-hidden rounded-lg border border-primary/30 shadow-xs"
                             aria-hidden="true"
                         >
                             <span className="bg-primary" />
@@ -25,12 +25,12 @@ export default function Layout() {
                             <span className="bg-card" />
                             <span className="bg-primary" />
                         </span>
-                        <span className="text-lg font-semibold tracking-tight transition-colors group-hover:text-primary">
+                        <span className="hidden text-lg font-semibold tracking-tight transition-colors group-hover:text-primary min-[360px]:inline">
                             Chesstutis.com
                         </span>
                     </NavLink>
 
-                    <nav aria-label="Primary navigation">
+                    <nav className="shrink-0" aria-label="Primary navigation">
                         <ul className="flex items-center gap-1">
                             {navItems.map((item) => (
                                 <li key={item.to}>
@@ -54,7 +54,7 @@ export default function Layout() {
                 </div>
             </header>
 
-            <main className="flex flex-1 flex-col">
+            <main className="flex min-w-0 flex-1 flex-col">
                 <Outlet />
             </main>
 
