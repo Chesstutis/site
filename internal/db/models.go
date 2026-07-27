@@ -9,15 +9,16 @@ import (
 )
 
 type Puzzle struct {
-	ID      int64
-	Puzzle  []byte
-	Status  string
-	Comment pgtype.Text
+	ID      int64       `json:"id"`
+	UserID  int64       `json:"user_id"`
+	Puzzle  []byte      `json:"puzzle"`
+	Status  string      `json:"status"`
+	Comment pgtype.Text `json:"comment"`
 }
 
 type User struct {
-	ID               int64
-	Email            string
-	PasswordHash     string
-	ChessComUsername string
+	ID               int64  `json:"id"`
+	Email            string `json:"email"`
+	PasswordHash     string `json:"password_hash"`
+	ChessComUsername string `json:"chess_com_username"`
 }

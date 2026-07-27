@@ -25,3 +25,34 @@ func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
 	)
 	return i, err
 }
+
+const getpuzzles = `-- name: Getpuzzles :many
+SELECT id, user_id, puzzle, status, comment FROM puzzles 
+WHERE user_id = $1
+`
+
+func (q *Queries) Getpuzzles(ctx context.Context, userID int64) ([]Puzzle, error) {
+	rows, err := q.db.Query(ctx, getpuzzles, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Puzzle
+	for rows.Next() {
+		var i Puzzle
+		if err := rows.Scan(
+			&i.ID,
+			&i.UserID,
+			&i.Puzzle,
+			&i.Status,
+			&i.Comment,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
