@@ -17,6 +17,7 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	"github.com/chesstutis/site/internal/auth"
 	"github.com/chesstutis/site/internal/db"
 	"github.com/chesstutis/site/internal/handlers"
 	"github.com/chesstutis/site/internal/observability"
@@ -49,6 +50,11 @@ func main() {
 	}
 	defer a.Close()
 
+	tokenSecret := os.Getenv("JWT_SECRET")
+	if tokenSecret == "" {
+		panic("JWT_SECRET is required")
+	}
+
 	r := chi.NewRouter()
 	h := handlers.New(queries, a)
 
@@ -68,10 +74,15 @@ func main() {
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
 			// r.Post("/signup", h.Signup)
-			// r.Post("/login", h.Login)
+			r.Post("/login", h.Login)
 			// r.Post("/logout", h.Logout)
 		})
-		r.Post("/analyze", h.AnalyzeGames)
+
+		r.Group(func(r chi.Router) {
+			r.Use(auth.RequireAuth(tokenSecret))
+
+			r.Post("/analyze", h.AnalyzeGames)
+		})
 	})
 
 	distFS, err := fs.Sub(frontendDist, "frontend/dist")

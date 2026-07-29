@@ -1,5 +1,5 @@
 -- name: AddPuzzle :one
-INSERT INTO puzzles
+-- INSERT INTO puzzles
 
 -- name: UpdatePuzzle :one
 

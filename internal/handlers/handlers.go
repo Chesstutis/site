@@ -1,10 +1,12 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 
 	"github.com/chesstutis/analyzer"
+	"github.com/chesstutis/site/internal/auth"
 	"github.com/chesstutis/site/internal/db"
 	"github.com/chesstutis/site/internal/requests"
 	"github.com/corentings/chess/v2"
@@ -13,13 +15,13 @@ import (
 )
 
 type Handler struct {
-	Queries       *db.Queries
+	Queries  *db.Queries
 	Analyzer *analyzer.Analyzer
 }
 
 func New(dbpool *db.Queries, analyzer *analyzer.Analyzer) *Handler {
 	return &Handler{
-		Queries:       dbpool,
+		Queries:  dbpool,
 		Analyzer: analyzer,
 	}
 }
@@ -29,7 +31,7 @@ func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AnalyzeGames(w http.ResponseWriter, r *http.Request) {
-	rawGames, err := requests.ParseAnalysisRequest(r.Body) 
+	rawGames, err := requests.ParseAnalysisRequest(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
@@ -86,3 +88,48 @@ func (h *Handler) AnalyzeGames(w http.ResponseWriter, r *http.Request) {
 	}
 	render.JSON(w, r, puzzleResponses)
 }
+
+// func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
+// 	rawGames, err := requests.ParseAnalysisRequest(r.Body)
+// }
+
+func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
+	var loginInfo requests.LoginReq
+
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(&loginInfo); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	userInfo, err := h.Queries.GetUserByEmail(r.Context(), loginInfo.Email)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	validPassword, err := auth.CheckPasswordHash(loginInfo.Password, userInfo.PasswordHash)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	if !validPassword {
+		http.Error(w, "password incorrect", http.StatusUnauthorized)
+		return
+	}
+
+	data, err := json.Marshal(userInfo)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}
+
+// func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+// 	rawGames, err := requests.ParseAnalysisRequest(r.Body)
+// }

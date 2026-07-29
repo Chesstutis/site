@@ -9,16 +9,20 @@ import (
 )
 
 type Puzzle struct {
-	ID      int64       `json:"id"`
-	UserID  int64       `json:"user_id"`
-	Puzzle  []byte      `json:"puzzle"`
-	Status  string      `json:"status"`
-	Comment pgtype.Text `json:"comment"`
+	ID        int64              `json:"id"`
+	UserID    int64              `json:"user_id"`
+	Puzzle    []byte             `json:"puzzle"`
+	Status    string             `json:"status"`
+	Comment   pgtype.Text        `json:"comment"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	SolvedAt  pgtype.Timestamptz `json:"solved_at"`
 }
 
 type User struct {
-	ID               int64  `json:"id"`
-	Email            string `json:"email"`
-	PasswordHash     string `json:"password_hash"`
-	ChessComUsername string `json:"chess_com_username"`
+	ID               int64              `json:"id"`
+	Email            string             `json:"email"`
+	PasswordHash     string             `json:"password_hash"`
+	ChessComUsername string             `json:"chess_com_username"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }

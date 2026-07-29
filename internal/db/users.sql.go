@@ -9,50 +9,64 @@ import (
 	"context"
 )
 
-const getUser = `-- name: GetUser :one
-SELECT id, email, password_hash, chess_com_username FROM users
+const deleteUser = `-- name: DeleteUser :one
+
+
+DELETE FROM users
 WHERE id = $1
+RETURNING id, email, password_hash, chess_com_username, created_at, updated_at
 `
 
-func (q *Queries) GetUser(ctx context.Context, id int64) (User, error) {
-	row := q.db.QueryRow(ctx, getUser, id)
+// -- name: CreateUser :one
+// -- name: UpdateUser :one
+func (q *Queries) DeleteUser(ctx context.Context, id int64) (User, error) {
+	row := q.db.QueryRow(ctx, deleteUser, id)
 	var i User
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
 		&i.PasswordHash,
 		&i.ChessComUsername,
+		&i.CreatedAt,
+		&i.UpdatedAt,
 	)
 	return i, err
 }
 
-const getpuzzles = `-- name: Getpuzzles :many
-SELECT id, user_id, puzzle, status, comment FROM puzzles 
-WHERE user_id = $1
+const getUserByEmail = `-- name: GetUserByEmail :one
+SELECT id, email, password_hash, chess_com_username, created_at, updated_at FROM users
+WHERE email = $1
 `
 
-func (q *Queries) Getpuzzles(ctx context.Context, userID int64) ([]Puzzle, error) {
-	rows, err := q.db.Query(ctx, getpuzzles, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	var items []Puzzle
-	for rows.Next() {
-		var i Puzzle
-		if err := rows.Scan(
-			&i.ID,
-			&i.UserID,
-			&i.Puzzle,
-			&i.Status,
-			&i.Comment,
-		); err != nil {
-			return nil, err
-		}
-		items = append(items, i)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, err
-	}
-	return items, nil
+func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error) {
+	row := q.db.QueryRow(ctx, getUserByEmail, email)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.ChessComUsername,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const getUserById = `-- name: GetUserById :one
+SELECT id, email, password_hash, chess_com_username, created_at, updated_at FROM users
+WHERE id = $1
+`
+
+func (q *Queries) GetUserById(ctx context.Context, id int64) (User, error) {
+	row := q.db.QueryRow(ctx, getUserById, id)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.ChessComUsername,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
 }
