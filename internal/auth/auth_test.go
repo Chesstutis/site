@@ -6,7 +6,19 @@ import (
 )
 
 func TestHashAndComparePassword(t *testing.T) {
+	hash, err := HashPassword("password1234")
+	if err != nil {
+		t.Fatalf("HashPassword returned an error: %v", err)
+	}
 
+	valid, err := CheckPasswordHash("password1234", hash)
+	if err != nil {
+		t.Fatalf("CheckPasswordHash returned an error: %v", err)
+	}
+
+	if !valid {
+		t.Fatal("expected password to match generated hash")
+	}
 }
 
 func TestValidJWT(t *testing.T) {

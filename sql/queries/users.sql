@@ -1,9 +1,11 @@
--- -- name: CreateUser :one
+-- name: CreateUser :one
 INSERT INTO users (email, password_hash, chess_com_username)
 VALUES (
-    
+    $1,
+    $2,
+    $3
 )
-
+RETURNING *;
 
 -- -- name: UpdateUser :one
 

@@ -23,13 +23,16 @@ type GamesList struct {
 	Username string      `json:"username"`
 }
 
-func ParseAnalysisRequest(r io.ReadCloser) (*GamesList, error) {
-	var rawGames GamesList
+func ParseAnalysisRequest(r io.Reader) (*GamesList, error) {
+	var req GamesList
 
-	err := json.NewDecoder(r).Decode(&rawGames)
-	if err != nil {
+	decoder := json.NewDecoder(r)
+	decoder.DisallowUnknownFields()
+
+
+	if err := decoder.Decode(&req); err != nil {
 		return nil, err
 	}
 
-	return &rawGames, nil
+	return &req, nil
 }

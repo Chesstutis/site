@@ -9,15 +9,43 @@ import (
 	"context"
 )
 
-const deleteUser = `-- name: DeleteUser :one
+const createUser = `-- name: CreateUser :one
+INSERT INTO users (email, password_hash, chess_com_username)
+VALUES (
+    $1,
+    $2,
+    $3
+)
+RETURNING id, email, password_hash, chess_com_username, created_at, updated_at
+`
 
+type CreateUserParams struct {
+	Email            string `json:"email"`
+	PasswordHash     string `json:"password_hash"`
+	ChessComUsername string `json:"chess_com_username"`
+}
+
+func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
+	row := q.db.QueryRow(ctx, createUser, arg.Email, arg.PasswordHash, arg.ChessComUsername)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.ChessComUsername,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const deleteUser = `-- name: DeleteUser :one
 
 DELETE FROM users
 WHERE id = $1
 RETURNING id, email, password_hash, chess_com_username, created_at, updated_at
 `
 
-// -- name: CreateUser :one
 // -- name: UpdateUser :one
 func (q *Queries) DeleteUser(ctx context.Context, id int64) (User, error) {
 	row := q.db.QueryRow(ctx, deleteUser, id)

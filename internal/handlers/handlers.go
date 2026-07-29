@@ -2,27 +2,33 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/chesstutis/analyzer"
 	"github.com/chesstutis/site/internal/auth"
 	"github.com/chesstutis/site/internal/db"
 	"github.com/chesstutis/site/internal/requests"
 	"github.com/corentings/chess/v2"
+	"github.com/jackc/pgx/v5/pgconn"
+	"github.com/jackc/pgx/v5/pgtype"
 
 	"github.com/go-chi/render"
 )
 
 type Handler struct {
-	Queries  *db.Queries
-	Analyzer *analyzer.Analyzer
+	Queries    *db.Queries
+	Analyzer   *analyzer.Analyzer
+	JWT_SECRET string
 }
 
-func New(dbpool *db.Queries, analyzer *analyzer.Analyzer) *Handler {
+func New(dbpool *db.Queries, analyzer *analyzer.Analyzer, JWTSecret string) *Handler {
 	return &Handler{
-		Queries:  dbpool,
-		Analyzer: analyzer,
+		Queries:    dbpool,
+		Analyzer:   analyzer,
+		JWT_SECRET: JWTSecret,
 	}
 }
 
@@ -89,9 +95,83 @@ func (h *Handler) AnalyzeGames(w http.ResponseWriter, r *http.Request) {
 	render.JSON(w, r, puzzleResponses)
 }
 
-// func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
-// 	rawGames, err := requests.ParseAnalysisRequest(r.Body)
-// }
+func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
+	var req requests.SignupReq
+
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	//TODO maybe should add some regex and chess.com validation
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	req.ChessComUsername = strings.TrimSpace(req.ChessComUsername)
+
+	if req.Email == "" ||
+		req.Password == "" ||
+		req.ChessComUsername == "" {
+		http.Error(w, "all fields are required", http.StatusBadRequest)
+		return
+	}
+
+	if len(req.Password) < 8 {
+		http.Error(w, "password must contain at least 8 characters", http.StatusBadRequest)
+		return
+	}
+
+	passwordHash, err := auth.HashPassword(req.Password)
+	if err != nil {
+		http.Error(w, "error creating user", http.StatusInternalServerError)
+		return
+	}
+
+	user, err := h.Queries.CreateUser(r.Context(), db.CreateUserParams{
+		Email:            req.Email,
+		PasswordHash:     passwordHash,
+		ChessComUsername: req.ChessComUsername,
+	})
+	if err != nil {
+		var pgErr *pgconn.PgError
+
+		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+			http.Error(w, "account with email already exists", http.StatusConflict)
+			return
+		}
+
+		http.Error(w, "error creating user", http.StatusInternalServerError)
+		return
+	}
+
+	token, err := auth.MakeJWT(user.ID, h.JWT_SECRET, time.Hour*24)
+	if err != nil {
+		http.Error(w, "error creating token", http.StatusInternalServerError)
+		return
+	}
+
+	response := User{
+		ID:               user.ID,
+		Email:            user.Email,
+		ChessComUsername: user.ChessComUsername,
+		CreatedAt:        user.CreatedAt,
+		UpdatedAt:        user.UpdatedAt,
+		Token:            token,
+	}
+
+	render.Status(r, http.StatusCreated)
+	render.JSON(w, r, response)
+}
+
+type User struct {
+	ID               int64              `json:"id"`
+	Email            string             `json:"email"`
+	ChessComUsername string             `json:"chess_com_username"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	Token            string             `json:"token"`
+}
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	var loginInfo requests.LoginReq
@@ -120,16 +200,29 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	data, err := json.Marshal(userInfo)
+	jwt, err := auth.MakeJWT(userInfo.ID, h.JWT_SECRET, time.Hour*24)
+	if err != nil {
+		http.Error(w, "error generating JWT", http.StatusInternalServerError)
+	}
+	resp := User{
+		ID:               userInfo.ID,
+		Email:            userInfo.Email,
+		ChessComUsername: userInfo.ChessComUsername,
+		CreatedAt:        userInfo.CreatedAt,
+		UpdatedAt:        userInfo.UpdatedAt,
+		Token:            jwt,
+	}
+
+	data, err := json.Marshal(resp)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	
+
 	w.WriteHeader(http.StatusOK)
 	w.Write(data)
 }
 
-// func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
-// 	rawGames, err := requests.ParseAnalysisRequest(r.Body)
-// }
+func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
+	// hmmm
+}

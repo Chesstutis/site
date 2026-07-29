@@ -13,11 +13,7 @@ import (
 )
 
 func HashPassword(password string) (string, error) {
-	hashed_password, err := argon2id.CreateHash(password, nil)
-	if err != nil {
-		return "", err
-	}
-	return hashed_password, nil
+	return argon2id.CreateHash(password, argon2id.DefaultParams)
 }
 
 func CheckPasswordHash(password, hash string) (bool, error) {

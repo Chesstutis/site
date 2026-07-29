@@ -56,7 +56,7 @@ func main() {
 	}
 
 	r := chi.NewRouter()
-	h := handlers.New(queries, a)
+	h := handlers.New(queries, a, tokenSecret)
 
 	r.Use(middleware.Logger)
 
@@ -73,9 +73,10 @@ func main() {
 	r.Get("/ping", h.PingHandler)
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
-			// r.Post("/signup", h.Signup)
+			r.Post("/signup", h.Signup)
 			r.Post("/login", h.Login)
-			// r.Post("/logout", h.Logout)
+
+			r.With(auth.RequireAuth(tokenSecret)).Post("/logout", h.Logout)
 		})
 
 		r.Group(func(r chi.Router) {
