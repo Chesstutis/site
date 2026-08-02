@@ -1,5 +1,5 @@
 import { ArrowRight } from "lucide-react";
-import { Link, Navigate } from "react-router-dom";
+import { Link, Navigate } from "react-router";
 import { useAuth } from "@/components/AuthProvider";
 import { buttonVariants } from "@/components/ui/button";
 import {

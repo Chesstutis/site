@@ -1,9 +1,8 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route } from "react-router";
 import { useState } from "react";
 import { useAuth } from "./components/AuthProvider";
 import Dashboard from "./pages/Dashboard";
 import Solve from "./pages/Solve";
-import Start from "./pages/Start"; 
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
@@ -23,7 +22,6 @@ export default function App() {
                     <Route path="/login" element={<Login />} />
                     <Route path="/signup" element={<Signup />} />
                     <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/start" element={<Start setUsername={setUsername} />} />
                     <Route path="/solve" element={<Solve username={solveUsername} />} />
                     <Route path="*" element={<NotFound />} />
                 </Route>
