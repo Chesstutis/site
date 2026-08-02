@@ -17,20 +17,21 @@ import {
 } from "../api/chessCom";
 import { longToShortNotation } from "@/lib/chessUtils";
 import type { Puzzle, PuzzleResponse } from "@/types/chesstutis"
-
-type SolveProps = {
-    username: string;
-};
+import { Navigate } from "react-router"
+import { useAuth } from "@/components/AuthProvider"
 
 type Status = "idle" | "loading" | "ready" | "error" | "none" | "done";
 
-export default function Solve({ username }: SolveProps) {
-    const [status, setStatus] = useState<Status>("idle");
+export default function Solve() {
+    const { status, user, token } = useAuth();
+    const username = user?.chess_com_username ?? "";
+
+    const [pageStatus, setStatus] = useState<Status>("idle");
     const [puzzlesResponse, setPuzzlesResponse] = useState<PuzzleResponse[]>([]);
     const [puzzleIndex, setPuzzleIndex] = useState(0);
 
     useEffect(() => {
-        if (!username) {
+        if (!username || !token) {
             setStatus("idle");
             return;
         }
@@ -49,7 +50,7 @@ export default function Solve({ username }: SolveProps) {
                 }
 
                 const archive = await getGamesArchive(latestArchiveUrl);
-                const puzzles = await analyzeGames(username, archive.games);
+                const puzzles = await analyzeGames(username, archive.games, token!);
 
                 setPuzzlesResponse(puzzles);
                 setStatus(puzzles.length === 0 ? "none" : "ready");
@@ -59,8 +60,7 @@ export default function Solve({ username }: SolveProps) {
             }
         }
         loadPuzzles();
-
-    }, [username]);
+    }, [username, token]);
 
     const puzzles: Puzzle[] = puzzlesResponse.map((p) => ({
         fen: p.fen,
@@ -84,8 +84,12 @@ export default function Solve({ username }: SolveProps) {
         setPuzzleIndex((prev) => prev + 1);
     };
 
-    if (status === "done") {
+    if (pageStatus === "done") {
         return <div>You solved all ur puzzles bruh</div>
+    }
+
+    if (status === "unauthenticated" || !user || !token) {
+        return <Navigate to="/login" replace />;
     }
 
     if (!username) {
@@ -108,7 +112,7 @@ export default function Solve({ username }: SolveProps) {
         );
     }
 
-    if (status === "loading" || status === "idle") {
+    if (pageStatus === "loading" || pageStatus === "idle" || status === "initializing") {
         return (
             <div className="flex flex-1 bg-background px-4 py-8 text-foreground">
                 <section className="mx-auto flex w-full max-w-3xl items-center justify-center">
@@ -134,8 +138,8 @@ export default function Solve({ username }: SolveProps) {
         );
     }
 
-    if (status == "none") {
-         return (
+    if (pageStatus == "none") {
+        return (
             <div className="flex flex-1 bg-background px-4 py-8 text-foreground">
                 <section className="mx-auto flex w-full max-w-3xl items-center justify-center">
                     <Card className="w-full">
@@ -153,7 +157,7 @@ export default function Solve({ username }: SolveProps) {
         );
     }
 
-    if (status === "error" || !currentPuzzle || !currentPuzzleResponse) {
+    if (pageStatus === "error" || !currentPuzzle || !currentPuzzleResponse) {
         return (
             <div className="flex flex-1 bg-background px-4 py-8 text-foreground">
                 <section className="mx-auto flex w-full max-w-3xl items-center justify-center">

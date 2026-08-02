@@ -1,10 +1,13 @@
 import type { PuzzleResponse } from "../types/chesstutis"
 import type { ChessGame } from "../types/chessCom"
 
-export const analyzeGames = async (username: string, games: ChessGame[]): Promise<PuzzleResponse[]> => {
+export const analyzeGames = async (username: string, games: ChessGame[], token: string,): Promise<PuzzleResponse[]> => {
     const res = await fetch("/api/analyze", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: { 
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({
             username,
             games,

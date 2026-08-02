@@ -1,6 +1,4 @@
 import { BrowserRouter, Routes, Route } from "react-router";
-import { useState } from "react";
-import { useAuth } from "./components/AuthProvider";
 import Dashboard from "./pages/Dashboard";
 import Solve from "./pages/Solve";
 import Home from "./pages/Home";
@@ -10,9 +8,6 @@ import NotFound from "./pages/NotFound"
 import Layout from "./components/Layout";
 
 export default function App() {
-    const [username, setUsername] = useState("");
-    const { user } = useAuth();
-    const solveUsername = user?.chess_com_username ?? username;
 
     return (
         <BrowserRouter>
@@ -22,7 +17,7 @@ export default function App() {
                     <Route path="/login" element={<Login />} />
                     <Route path="/signup" element={<Signup />} />
                     <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/solve" element={<Solve username={solveUsername} />} />
+                    <Route path="/solve" element={<Solve />} />
                     <Route path="*" element={<NotFound />} />
                 </Route>
             </Routes>
