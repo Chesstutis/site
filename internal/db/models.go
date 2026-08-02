@@ -10,6 +10,7 @@ import (
 
 type Puzzle struct {
 	ID        int64              `json:"id"`
+	GameUuid  pgtype.UUID        `json:"game_uuid"`
 	UserID    int64              `json:"user_id"`
 	Puzzle    []byte             `json:"puzzle"`
 	Status    string             `json:"status"`

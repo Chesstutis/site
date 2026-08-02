@@ -12,7 +12,7 @@ import (
 const addPuzzle = `-- name: AddPuzzle :one
 
 
-SELECT id, user_id, puzzle, status, comment, created_at, solved_at FROM puzzles 
+SELECT id, game_uuid, user_id, puzzle, status, comment, created_at, solved_at FROM puzzles 
 WHERE user_id = $1
 `
 
@@ -22,6 +22,7 @@ func (q *Queries) AddPuzzle(ctx context.Context, userID int64) (Puzzle, error) {
 	var i Puzzle
 	err := row.Scan(
 		&i.ID,
+		&i.GameUuid,
 		&i.UserID,
 		&i.Puzzle,
 		&i.Status,

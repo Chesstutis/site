@@ -1,12 +1,41 @@
 import { GitFork } from "lucide-react";
-import { NavLink, Outlet } from "react-router-dom";
+import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { useAuth } from "@/components/AuthProvider";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
-const navItems = [
-    { label: "Home", to: "/", end: false },
-    { label: "Start", to: "/start", end: true },
+const initializingNavItems = [
+    { label: "Home", to: "/", end: true },
+];
+
+const guestNavItems = [
+    { label: "Home", to: "/", end: true },
+    { label: "Log in", to: "/login", end: true },
+    { label: "Sign up", to: "/signup", end: true },
+];
+
+const authenticatedNavItems = [
+    { label: "Home", to: "/", end: true },
+    { label: "Dashboard", to: "/dashboard", end: true },
+    { label: "Find puzzles", to: "/solve", end: true },
 ];
 
 export default function Layout() {
+    const { status, logout } = useAuth();
+    const navigate = useNavigate();
+
+    const navItems =
+        status === "authenticated"
+            ? authenticatedNavItems
+            : status === "unauthenticated"
+              ? guestNavItems
+              : initializingNavItems;
+
+    async function handleLogout() {
+        await logout();
+        navigate("/");
+    }
+
     return (
         <div className="flex min-h-screen w-full min-w-0 flex-col overflow-x-clip bg-background text-foreground">
             <header className="border-b bg-card/90 backdrop-blur">
@@ -38,17 +67,30 @@ export default function Layout() {
                                         to={item.to}
                                         end={item.end}
                                         className={({ isActive }) =>
-                                            `inline-flex h-9 items-center rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+                                            cn(
+                                                "inline-flex h-9 items-center rounded-md px-3 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
                                                 isActive
                                                     ? "bg-primary/10 text-primary"
-                                                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                                            }`
+                                                    : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                                            )
                                         }
                                     >
                                         {item.label}
                                     </NavLink>
                                 </li>
                             ))}
+                            {status === "authenticated" ? (
+                                <li>
+                                    <Button
+                                        type="button"
+                                        variant="ghost"
+                                        size="lg"
+                                        onClick={handleLogout}
+                                    >
+                                        Log out
+                                    </Button>
+                                </li>
+                            ) : null}
                         </ul>
                     </nav>
                 </div>

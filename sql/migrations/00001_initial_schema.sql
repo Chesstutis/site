@@ -10,6 +10,7 @@ CREATE TABLE users (
 
 CREATE TABLE puzzles (
     id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+    game_uuid UUID NOT NULL DEFAULT gen_random_uuid(),
     user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     puzzle JSONB NOT NULL,
     status TEXT NOT NULL DEFAULT 'unseen',

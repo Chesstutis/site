@@ -80,7 +80,7 @@ func main() {
 		})
 
 		r.Group(func(r chi.Router) {
-			r.Use(auth.RequireAuth(tokenSecret))
+			// r.Use(auth.RequireAuth(tokenSecret))
 
 			r.Post("/analyze", h.AnalyzeGames)
 		})
@@ -107,6 +107,7 @@ func main() {
 	r.Get("/solve", serveIndex)
 	r.Get("/login", serveIndex)
 	r.Get("/signup", serveIndex)
+	r.Get("/dashboard", serveIndex)
 
 	r.Handle("/assets/*", http.FileServer(http.FS(distFS)))
 
