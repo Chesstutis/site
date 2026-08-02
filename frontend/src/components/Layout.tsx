@@ -15,7 +15,6 @@ const guestNavItems = [
 ];
 
 const authenticatedNavItems = [
-    { label: "Home", to: "/", end: true },
     { label: "Dashboard", to: "/dashboard", end: true },
     { label: "Find puzzles", to: "/solve", end: true },
 ];
