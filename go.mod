@@ -3,11 +3,13 @@ module github.com/chesstutis/site
 go 1.26.2
 
 require (
+	github.com/alexedwards/argon2id v1.0.0
 	github.com/chesstutis/analyzer v1.3.0
 	github.com/corentings/chess/v2 v2.5.1
 	github.com/go-chi/chi/v5 v5.3.0
 	github.com/go-chi/cors v1.2.2
 	github.com/go-chi/render v1.0.3
+	github.com/golang-jwt/jwt/v5 v5.3.1
 	github.com/grafana/pyroscope-go v1.4.0
 	github.com/jackc/pgx/v5 v5.10.0
 	github.com/joho/godotenv v1.5.1
@@ -29,6 +31,7 @@ require (
 	github.com/prometheus/common v0.66.1 // indirect
 	github.com/prometheus/procfs v0.16.1 // indirect
 	go.yaml.in/yaml/v2 v2.4.2 // indirect
+	golang.org/x/crypto v0.14.0 // indirect
 	golang.org/x/sync v0.21.0 // indirect
 	golang.org/x/sys v0.35.0 // indirect
 	golang.org/x/text v0.38.0 // indirect

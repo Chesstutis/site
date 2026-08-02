@@ -17,10 +17,10 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	"github.com/chesstutis/site/internal/auth"
 	"github.com/chesstutis/site/internal/db"
 	"github.com/chesstutis/site/internal/handlers"
 	"github.com/chesstutis/site/internal/observability"
-
 	// "github.com/grafana/pyroscope-go"
 )
 
@@ -30,11 +30,13 @@ var frontendDist embed.FS
 func main() {
 	// pyroscope.Start(observability.PyroConfig())
 	godotenv.Load()
-	dbpool, err := db.New(context.Background(), os.Getenv("DATABASE_URL"))
+	dbpool, err := db.NewPool(context.Background(), os.Getenv("DATABASE_URL"))
 	if err != nil {
 		panic(err)
 	}
-	defer dbpool.Pool.Close()
+	defer dbpool.Close()
+
+	queries := db.New(dbpool)
 
 	eng, err := uci.New(os.Getenv("STOCKFISH_PATH"))
 	if err != nil {
@@ -48,8 +50,13 @@ func main() {
 	}
 	defer a.Close()
 
+	tokenSecret := os.Getenv("JWT_SECRET")
+	if tokenSecret == "" {
+		panic("JWT_SECRET is required")
+	}
+
 	r := chi.NewRouter()
-	h := handlers.New(dbpool, a)
+	h := handlers.New(queries, a, tokenSecret)
 
 	r.Use(middleware.Logger)
 
@@ -64,8 +71,19 @@ func main() {
 
 	r.Handle("/metrics", observability.HandleMetrics())
 	r.Get("/ping", h.PingHandler)
-	r.Route("/api", func(chi chi.Router) {
-		chi.Post("/analyze", h.AnalyzeGames)
+	r.Route("/api", func(r chi.Router) {
+		r.Route("/auth", func(r chi.Router) {
+			r.Post("/signup", h.Signup)
+			r.Post("/login", h.Login)
+
+			r.With(auth.RequireAuth(tokenSecret)).Post("/logout", h.Logout)
+		})
+
+		r.Group(func(r chi.Router) {
+			// r.Use(auth.RequireAuth(tokenSecret))
+
+			r.Post("/analyze", h.AnalyzeGames)
+		})
 	})
 
 	distFS, err := fs.Sub(frontendDist, "frontend/dist")
@@ -83,9 +101,13 @@ func main() {
 		_, _ = w.Write(index)
 	}
 
+	// frontend routes
 	r.Get("/", serveIndex)
 	r.Get("/home", serveIndex)
 	r.Get("/solve", serveIndex)
+	r.Get("/login", serveIndex)
+	r.Get("/signup", serveIndex)
+	r.Get("/dashboard", serveIndex)
 
 	r.Handle("/assets/*", http.FileServer(http.FS(distFS)))
 
