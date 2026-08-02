@@ -27,8 +27,9 @@ export default function Layout() {
         status === "authenticated"
             ? authenticatedNavItems
             : status === "unauthenticated"
-              ? guestNavItems
-              : initializingNavItems;
+                ? guestNavItems
+                : initializingNavItems;
+    const home: string = status === "authenticated" ? "/dashboard" : "/";
 
     async function handleLogout() {
         await logout();
@@ -40,7 +41,7 @@ export default function Layout() {
             <header className="border-b bg-card/90 backdrop-blur">
                 <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-2 px-4 sm:gap-6 sm:px-6">
                     <NavLink
-                        to="/"
+                        to={home}
                         className="group flex min-w-0 items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:gap-3"
                         aria-label="Chesstutis.com home"
                     >
