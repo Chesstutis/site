@@ -61,6 +61,7 @@ func main() {
 	r := chi.NewRouter()
 	h := handlers.New(queries, a, tokenSecret)
 
+	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 
 	r.Use(cors.Handler(cors.Options{

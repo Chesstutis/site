@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -15,6 +16,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 )
 
@@ -102,6 +104,11 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 	decoder.DisallowUnknownFields()
 
 	if err := decoder.Decode(&req); err != nil {
+		slog.Error(
+			"failed to parse request body",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
 		http.Error(w, "invalid request body", http.StatusBadRequest)
 		return
 	}
@@ -113,6 +120,10 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 	if req.Email == "" ||
 		req.Password == "" ||
 		req.ChessComUsername == "" {
+		slog.Error(
+			"some fields missing in request",
+			"request_id", middleware.GetReqID(r.Context()),
+		)
 		http.Error(w, "all fields are required", http.StatusBadRequest)
 		return
 	}
@@ -124,6 +135,11 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 
 	passwordHash, err := auth.HashPassword(req.Password)
 	if err != nil {
+		slog.Error(
+			"failed to create user",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
 		http.Error(w, "error creating user", http.StatusInternalServerError)
 		return
 	}
@@ -133,21 +149,36 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		PasswordHash:     passwordHash,
 		ChessComUsername: req.ChessComUsername,
 	})
+
 	if err != nil {
 		var pgErr *pgconn.PgError
 
 		if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-			http.Error(w, "account with email already exists", http.StatusConflict)
+			slog.Error(
+				"account with email already exists",
+				"request_id", middleware.GetReqID(r.Context()),
+				"err", err,
+			)
+			http.Error(w, "error creating user", http.StatusConflict)
 			return
 		}
-
+		slog.Error(
+			"error fetching from database",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
 		http.Error(w, "error creating user", http.StatusInternalServerError)
 		return
 	}
 
 	token, err := auth.MakeJWT(user.ID, h.JWT_SECRET, time.Hour*24)
 	if err != nil {
-		http.Error(w, "error creating token", http.StatusInternalServerError)
+		slog.Error(
+			"error creating token",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -180,29 +211,54 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	decoder.DisallowUnknownFields()
 
 	if err := decoder.Decode(&loginInfo); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		slog.Error(
+			"error parsing request",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "error parsing request", http.StatusBadRequest)
 		return
 	}
 	userInfo, err := h.Queries.GetUserByEmail(r.Context(), loginInfo.Email)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
+		slog.Error(
+			"error fetching from database",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "error logging in", http.StatusBadRequest)
 		return
 	}
 
 	validPassword, err := auth.CheckPasswordHash(loginInfo.Password, userInfo.PasswordHash)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error(
+			"error checking password hash",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
 	if !validPassword {
-		http.Error(w, "password incorrect", http.StatusUnauthorized)
+		slog.Error(
+			"incorrect password",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "invalid email or password", http.StatusUnauthorized)
 		return
 	}
 
 	jwt, err := auth.MakeJWT(userInfo.ID, h.JWT_SECRET, time.Hour*24)
 	if err != nil {
-		http.Error(w, "error generating JWT", http.StatusInternalServerError)
+		slog.Error(
+			"error generating JWT",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 	}
 	resp := User{
 		ID:               userInfo.ID,
@@ -215,7 +271,12 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	data, err := json.Marshal(resp)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		slog.Error(
+			"error marshalling response",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
