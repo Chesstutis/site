@@ -6,7 +6,10 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"net"
 	"os"
+	"time"
+	"log"
 
 	"github.com/chesstutis/analyzer"
 	"github.com/corentings/chess/v2/uci"
@@ -20,7 +23,7 @@ import (
 	"github.com/chesstutis/site/internal/auth"
 	"github.com/chesstutis/site/internal/db"
 	"github.com/chesstutis/site/internal/handlers"
-	"github.com/chesstutis/site/internal/observability"
+	// "github.com/chesstutis/site/internal/observability"
 	// "github.com/grafana/pyroscope-go"
 )
 
@@ -69,8 +72,8 @@ func main() {
 		MaxAge:           300,
 	}))
 
-	r.Handle("/metrics", observability.HandleMetrics())
-	r.Get("/ping", h.PingHandler)
+	// r.Handle("/metrics", observability.HandleMetrics())
+	// r.Get("/ping", h.PingHandler)
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/signup", h.Signup)
@@ -80,7 +83,7 @@ func main() {
 		})
 
 		r.Group(func(r chi.Router) {
-			// r.Use(auth.RequireAuth(tokenSecret))
+			r.Use(auth.RequireAuth(tokenSecret))
 
 			r.Post("/analyze", h.AnalyzeGames)
 		})
@@ -119,8 +122,26 @@ func main() {
 		http.NotFound(w, r)
 	})
 
-	fmt.Printf("listening on port %s\n", os.Getenv("SERVER_PORT"))
-	if err := http.ListenAndServe(":"+os.Getenv("SERVER_PORT"), r); err != nil {
-		panic(err)
+	serverAddr := os.Getenv("SERVER_ADDR")
+	if serverAddr == "" {
+		log.Fatal(err)
 	}
+
+	serverPort := os.Getenv("SERVER_PORT")
+	if serverPort == "" {
+		log.Fatal(err)
+	}
+
+	server := &http.Server{
+		Addr: net.JoinHostPort(serverAddr, serverPort),
+		Handler: r,
+		ReadHeaderTimeout: 5 * time.Second,
+		ReadTimeout: 15 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout: 60 * time.Second,
+		MaxHeaderBytes: 1 << 20,
+	}
+
+	fmt.Printf("listening on port %s\n", os.Getenv("SERVER_PORT"))
+	log.Fatal(server.ListenAndServe())
 }
