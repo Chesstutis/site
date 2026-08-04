@@ -143,6 +143,6 @@ func main() {
 		MaxHeaderBytes: 1 << 20,
 	}
 
-	fmt.Printf("listening on port %s\n", os.Getenv("SERVER_PORT"))
+	fmt.Printf("app starter at http://localhost:%s\n", serverPort)
 	log.Fatal(server.ListenAndServe())
 }
