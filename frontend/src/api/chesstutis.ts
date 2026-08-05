@@ -16,6 +16,20 @@ export const analyzeGames = async (username: string, games: ChessGame[], token: 
     if (!res.ok) {
         throw new Error("Failed to analyze games");
     }
-    const data = await res.json()
+    const data = await res.json();
+    return data ?? [];
+}
+
+export const getAccountInfo = async (token: string) => {
+    const res = await fetch("/api/me", {
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+        },
+    })
+    if (!res.ok) {
+        throw new Error("Failed to analyze games");
+    }
+    const data = await res.json();
     return data ?? [];
 }

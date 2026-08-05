@@ -73,18 +73,22 @@ func main() {
 		MaxAge:           300,
 	}))
 
+	// =================================
+	// ----------- ROUTES --------------
+	// =================================
+
 	// r.Handle("/metrics", observability.HandleMetrics())
 	// r.Get("/ping", h.PingHandler)
 	r.Route("/api", func(r chi.Router) {
 		r.Route("/auth", func(r chi.Router) {
 			r.Post("/signup", h.Signup)
 			r.Post("/login", h.Login)
-
-			r.With(auth.RequireAuth(tokenSecret)).Post("/logout", h.Logout)
+			// r.With(auth.RequireAuth(tokenSecret)).Post("/logout", h.Logout)
 		})
 
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(tokenSecret))
+			r.Get("/me", h.GetMe)
 
 			r.Post("/analyze", h.AnalyzeGames)
 		})
@@ -143,6 +147,6 @@ func main() {
 		MaxHeaderBytes: 1 << 20,
 	}
 
-	fmt.Printf("listening on port %s\n", os.Getenv("SERVER_PORT"))
+	fmt.Printf("app starter at http://localhost:%s\n", serverPort)
 	log.Fatal(server.ListenAndServe())
 }

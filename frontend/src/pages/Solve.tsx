@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { ChessPuzzle } from "@react-chess-tools/react-chess-puzzle";
+import { ChessPuzzle, type Puzzle } from "@react-chess-tools/react-chess-puzzle";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,7 +16,7 @@ import {
     getGamesArchive,
 } from "../api/chessCom";
 import { longToShortNotation } from "@/lib/chessUtils";
-import type { Puzzle, PuzzleResponse } from "@/types/chesstutis"
+import type { PuzzleResponse } from "@/types/chesstutis"
 import { Navigate } from "react-router"
 import { useAuth } from "@/components/AuthProvider"
 
