@@ -150,6 +150,14 @@ export default function Layout() {
                                             {user?.email ?? "Account"}
                                         </DropdownMenuLabel>
                                         <DropdownMenuItem
+                                            render={
+                                                <NavLink to="/account" />
+                                            }
+                                        >
+                                            <UserRound aria-hidden="true" />
+                                            Account
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
                                             onClick={handleLogout}
                                         >
                                             <LogOut aria-hidden="true" />

@@ -284,6 +284,28 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
-func (h *Handler) Logout(w http.ResponseWriter, r *http.Request) {
-	// hmmm
+func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
+	userId, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "error getting user info", http.StatusBadRequest)
+		return
+	}
+
+	userInfo, err := h.Queries.GetUserById(r.Context(), userId)
+	if err != nil {
+		http.Error(w, "error getting user info", http.StatusInternalServerError)
+		return
+	}
+	data, err := json.Marshal(userInfo)
+	if err != nil {
+		slog.Error(
+			"error marshalling response",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
 }

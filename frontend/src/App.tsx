@@ -5,6 +5,7 @@ import Solve from "./pages/Solve";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import Account from "./pages/Account";
 import NotFound from "./pages/NotFound"
 import Layout from "./components/Layout";
 
@@ -33,6 +34,7 @@ export default function App() {
                     <Route path="/signup" element={<Signup />} />
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/solve" element={<Solve />} />
+                    <Route path="/account" element={<Account />} />
                     <Route path="*" element={<NotFound />} />
                 </Route>
             </Routes>
