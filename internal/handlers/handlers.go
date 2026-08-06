@@ -309,3 +309,35 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write(data)
 }
+
+func (h *Handler) PuzzleStats(w http.ResponseWriter, r *http.Request) {
+	userId, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "error getting user info", http.StatusBadRequest)
+		return
+	}
+
+	puzzleStats, err := h.Queries.GetPuzzleStats(r.Context(), userId)
+	if err != nil {
+		slog.Error(
+			"error fetching from database",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	data, err := json.Marshal(puzzleStats)
+	if err != nil {
+		slog.Error(
+			"error marshalling response",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}

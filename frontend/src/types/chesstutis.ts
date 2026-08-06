@@ -11,4 +11,10 @@ export type User = {
     chess_com_username: string;
     created_at: Date;
     updated_at: Date;
-}
+};
+
+export type PuzzleStats = {
+    solved: number;
+    unsolved: number;
+    total: number;
+};

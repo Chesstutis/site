@@ -89,6 +89,7 @@ func main() {
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(tokenSecret))
 			r.Get("/me", h.GetMe)
+			r.Get("/me/puzzles/stats", h.PuzzleStats)
 
 			r.Post("/analyze", h.AnalyzeGames)
 		})

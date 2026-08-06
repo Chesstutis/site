@@ -32,3 +32,25 @@ func (q *Queries) AddPuzzle(ctx context.Context, userID int64) (Puzzle, error) {
 	)
 	return i, err
 }
+
+const getPuzzleStats = `-- name: GetPuzzleStats :one
+SELECT 
+    COUNT(*) FILTER (WHERE status = 'solved') AS solved,
+    COUNT(*) FILTER (WHERE status <> 'solved') AS unsolved,
+    COUNT(*) AS total
+FROM puzzles 
+WHERE user_id = $1
+`
+
+type GetPuzzleStatsRow struct {
+	Solved   int64 `json:"solved"`
+	Unsolved int64 `json:"unsolved"`
+	Total    int64 `json:"total"`
+}
+
+func (q *Queries) GetPuzzleStats(ctx context.Context, userID int64) (GetPuzzleStatsRow, error) {
+	row := q.db.QueryRow(ctx, getPuzzleStats, userID)
+	var i GetPuzzleStatsRow
+	err := row.Scan(&i.Solved, &i.Unsolved, &i.Total)
+	return i, err
+}

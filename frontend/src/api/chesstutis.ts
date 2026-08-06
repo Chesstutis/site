@@ -1,4 +1,4 @@
-import type { PuzzleResponse } from "../types/chesstutis"
+import type { PuzzleResponse, PuzzleStats } from "../types/chesstutis"
 import type { ChessGame } from "../types/chessCom"
 
 export const analyzeGames = async (username: string, games: ChessGame[], token: string,): Promise<PuzzleResponse[]> => {
@@ -32,4 +32,17 @@ export const getAccountInfo = async (token: string) => {
     }
     const data = await res.json();
     return data ?? [];
+}
+
+export const getPuzzleStats = async (token: string): Promise<PuzzleStats> => {
+    const res = await fetch("/api/me/puzzles/stats", {
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+        },
+    })
+    if (!res.ok) {
+        throw new Error("Failed to fetch puzzle stats");
+    }
+    return res.json() as Promise<PuzzleStats>;
 }

@@ -1,5 +1,5 @@
-import { getAccountInfo } from "@/api/chesstutis";
-import type { User } from "@/types/chesstutis";
+import { getAccountInfo, getPuzzleStats } from "@/api/chesstutis";
+import type { PuzzleStats, User } from "@/types/chesstutis";
 import { useAuth } from "@/components/AuthProvider";
 import { useState, useEffect } from "react";
 import {
@@ -8,11 +8,24 @@ import {
     Hash,
     KeyRound,
     Mail,
+    Puzzle,
     ShieldAlert,
     Trash2,
     UserRoundPen,
 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import {
+    AlertDialog,
+    AlertDialogAction,
+    AlertDialogCancel,
+    AlertDialogContent,
+    AlertDialogDescription,
+    AlertDialogFooter,
+    AlertDialogHeader,
+    AlertDialogMedia,
+    AlertDialogTitle,
+    AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
 import {
     Card,
@@ -66,6 +79,7 @@ export default function Account() {
     const { token } = useAuth();
     const [status, setStatus] = useState<Status>("idle");
     const [accountInfo, setAccountInfo] = useState<User>();
+    const [puzzleStats, setPuzzleStats] = useState<PuzzleStats>();
 
     useEffect(() => {
         if (!token) {
@@ -76,8 +90,12 @@ export default function Account() {
         async function getData() {
             try {
                 setStatus("loading");
-                const data = await getAccountInfo(token!);
-                setAccountInfo(data);
+                const [accountData, statsData] = await Promise.all([
+                    getAccountInfo(token!),
+                    getPuzzleStats(token!),
+                ]);
+                setAccountInfo(accountData);
+                setPuzzleStats(statsData);
                 setStatus("idle");
             } catch (error) {
                 console.error(error);
@@ -115,7 +133,7 @@ export default function Account() {
         );
     }
 
-    if (!accountInfo) return null;
+    if (!accountInfo || !puzzleStats) return null;
 
     const accountDetails = [
         {
@@ -204,30 +222,89 @@ export default function Account() {
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="grid gap-3 sm:grid-cols-2">
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="lg"
-                                    className="justify-start"
-                                >
-                                    <KeyRound
-                                        data-icon="inline-start"
-                                        aria-hidden="true"
-                                    />
-                                    Change password
-                                </Button>
-                                <Button
-                                    type="button"
-                                    variant="outline"
-                                    size="lg"
-                                    className="justify-start"
-                                >
-                                    <UserRoundPen
-                                        data-icon="inline-start"
-                                        aria-hidden="true"
-                                    />
-                                    Change Chess.com username
-                                </Button>
+                                <AlertDialog>
+                                    <AlertDialogTrigger
+                                        render={
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="lg"
+                                                className="justify-start"
+                                            />
+                                        }
+                                    >
+                                        <KeyRound
+                                            data-icon="inline-start"
+                                            aria-hidden="true"
+                                        />
+                                        Change password
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent size="sm">
+                                        <AlertDialogHeader>
+                                            <AlertDialogMedia>
+                                                <KeyRound aria-hidden="true" />
+                                            </AlertDialogMedia>
+                                            <AlertDialogTitle>
+                                                Change your password?
+                                            </AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                                Password changes are not available
+                                                yet. This dialog is ready for the
+                                                future account flow.
+                                            </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel>
+                                                Cancel
+                                            </AlertDialogCancel>
+                                            <AlertDialogAction disabled>
+                                                Change password
+                                            </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
+
+                                <AlertDialog>
+                                    <AlertDialogTrigger
+                                        render={
+                                            <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="lg"
+                                                className="justify-start"
+                                            />
+                                        }
+                                    >
+                                        <UserRoundPen
+                                            data-icon="inline-start"
+                                            aria-hidden="true"
+                                        />
+                                        Change Chess.com username
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent size="sm">
+                                        <AlertDialogHeader>
+                                            <AlertDialogMedia>
+                                                <UserRoundPen aria-hidden="true" />
+                                            </AlertDialogMedia>
+                                            <AlertDialogTitle>
+                                                Change your Chess.com username?
+                                            </AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                                Username changes are not available
+                                                yet. This dialog is ready for the
+                                                future account flow.
+                                            </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel>
+                                                Cancel
+                                            </AlertDialogCancel>
+                                            <AlertDialogAction disabled>
+                                                Change username
+                                            </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
                             </CardContent>
                         </Card>
 
@@ -249,18 +326,54 @@ export default function Account() {
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <Button type="button" variant="destructive">
-                                    <Trash2
-                                        data-icon="inline-start"
-                                        aria-hidden="true"
-                                    />
-                                    Delete account
-                                </Button>
+                                <AlertDialog>
+                                    <AlertDialogTrigger
+                                        render={
+                                            <Button
+                                                type="button"
+                                                variant="destructive"
+                                            />
+                                        }
+                                    >
+                                        <Trash2
+                                            data-icon="inline-start"
+                                            aria-hidden="true"
+                                        />
+                                        Delete account
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent size="sm">
+                                        <AlertDialogHeader>
+                                            <AlertDialogMedia>
+                                                <Trash2 aria-hidden="true" />
+                                            </AlertDialogMedia>
+                                            <AlertDialogTitle>
+                                                Delete your account?
+                                            </AlertDialogTitle>
+                                            <AlertDialogDescription>
+                                                Account deletion is not available
+                                                yet. When enabled, this will
+                                                permanently remove your account and
+                                                training data.
+                                            </AlertDialogDescription>
+                                        </AlertDialogHeader>
+                                        <AlertDialogFooter>
+                                            <AlertDialogCancel>
+                                                Cancel
+                                            </AlertDialogCancel>
+                                            <AlertDialogAction
+                                                variant="destructive"
+                                                disabled
+                                            >
+                                                Delete account
+                                            </AlertDialogAction>
+                                        </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                </AlertDialog>
                             </CardContent>
                         </Card>
                     </div>
 
-                    <aside className="lg:order-last">
+                    <aside className="flex flex-col gap-6 lg:order-last">
                         <Card className="overflow-hidden bg-primary text-primary-foreground ring-primary">
                             <CardContent className="relative py-2">
                                 <span
@@ -277,6 +390,24 @@ export default function Account() {
                                 </p>
                                 <p className="relative mt-2 text-sm text-primary-foreground/75">
                                     since you joined Chesstutis
+                                </p>
+                            </CardContent>
+                        </Card>
+
+                        <Card className="overflow-hidden">
+                            <CardContent className="relative py-2">
+                                <Puzzle
+                                    className="absolute -right-5 -top-5 size-28 rotate-12 text-primary/10"
+                                    aria-hidden="true"
+                                />
+                                <p className="relative text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                                    Training progress
+                                </p>
+                                <p className="relative mt-3 text-4xl font-semibold tracking-tight text-primary">
+                                    {puzzleStats.solved.toLocaleString()}
+                                </p>
+                                <p className="relative mt-2 text-sm text-muted-foreground">
+                                    puzzles solved
                                 </p>
                             </CardContent>
                         </Card>

@@ -8,6 +8,16 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type ChessComRatingSnapshot struct {
+	ID           int64              `json:"id"`
+	UserID       int64              `json:"user_id"`
+	CapturedAt   pgtype.Timestamptz `json:"captured_at"`
+	BulletRating pgtype.Int4        `json:"bullet_rating"`
+	BlitzRating  pgtype.Int4        `json:"blitz_rating"`
+	RapidRating  pgtype.Int4        `json:"rapid_rating"`
+	DailyRating  pgtype.Int4        `json:"daily_rating"`
+}
+
 type Puzzle struct {
 	ID        int64              `json:"id"`
 	GameUuid  pgtype.UUID        `json:"game_uuid"`
