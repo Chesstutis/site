@@ -1,0 +1,51 @@
+services:
+  db:
+    image: postgres:17-bookworm
+    environment:
+      POSTGRES_DB: chesstutis
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d chesstutis"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  migrate:
+    build:
+      context: .
+    environment:
+      DATABASE_URL: postgres://postgres:postgres@db:5432/chesstutis?sslmode=disable
+    command:
+      - /usr/local/bin/goose
+      - -dir
+      - /app/sql/migrations
+      - postgres
+      - postgres://postgres:postgres@db:5432/chesstutis?sslmode=disable
+      - up
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: "no"
+
+  app:
+    build:
+      context: .
+    environment:
+      SERVER_ADDR: 0.0.0.0
+      SERVER_PORT: "8080"
+      STOCKFISH_PATH: /usr/games/stockfish
+      DATABASE_URL: postgres://postgres:postgres@db:5432/chesstutis?sslmode=disable
+      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in your .env file}
+    ports:
+      - "8080:8080"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
