@@ -67,6 +67,7 @@ func (h *Handler) AnalyzeGames(w http.ResponseWriter, r *http.Request) {
 		} else {
 			// p = chess.NoColor
 			http.Error(w, "invalid username", http.StatusBadRequest)
+			return
 		}
 
 		gameAnalysis, err := h.Analyzer.AnalyzeGame(game, playerColor)
