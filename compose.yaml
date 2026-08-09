@@ -1,51 +1,90 @@
+name: chesstutis
+
+x-database-url: &database-url
+  postgres://${POSTGRES_USER:-postgres}:${POSTGRES_PASSWORD:-postgres}@db:5432/${POSTGRES_DB:-chesstutis}?sslmode=disable
+
 services:
   db:
     image: postgres:17-bookworm
     environment:
-      POSTGRES_DB: chesstutis
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ${POSTGRES_DB:-chesstutis}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
     volumes:
       - postgres-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres -d chesstutis"]
+      test:
+        - CMD-SHELL
+        - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
       interval: 5s
       timeout: 5s
       retries: 10
+      start_period: 10s
     restart: unless-stopped
+    networks:
+      - backend
 
   migrate:
+    image: chesstutis-app
     build:
       context: .
+      dockerfile: Dockerfile
     environment:
-      DATABASE_URL: postgres://postgres:postgres@db:5432/chesstutis?sslmode=disable
+      DATABASE_URL: *database-url
     command:
-      - /usr/local/bin/goose
-      - -dir
-      - /app/sql/migrations
-      - postgres
-      - postgres://postgres:postgres@db:5432/chesstutis?sslmode=disable
-      - up
+      - /bin/sh
+      - -c
+      - >
+        exec goose
+        -dir /app/sql/migrations
+        postgres
+        "$${DATABASE_URL}"
+        up
     depends_on:
       db:
         condition: service_healthy
     restart: "no"
+    networks:
+      - backend
 
   app:
+    image: chesstutis-app
     build:
       context: .
+      dockerfile: Dockerfile
     environment:
       SERVER_ADDR: 0.0.0.0
       SERVER_PORT: "8080"
       STOCKFISH_PATH: /usr/games/stockfish
-      DATABASE_URL: postgres://postgres:postgres@db:5432/chesstutis?sslmode=disable
-      JWT_SECRET: ${JWT_SECRET:?Set JWT_SECRET in your .env file}
-    ports:
-      - "8080:8080"
+      DATABASE_URL: *database-url
+      JWT_SECRET: ${JWT_SECRET:?JWT_SECRET must be set in .env}
+    expose:
+      - "8080"
     depends_on:
       migrate:
         condition: service_completed_successfully
     restart: unless-stopped
+    stop_grace_period: 30s
+    networks:
+      - backend
+      - frontend
+
+  nginx:
+    image: nginx:1.29-alpine
+    ports:
+      - "${HTTP_PORT:-80}:80"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - app
+    restart: unless-stopped
+    networks:
+      - frontend
 
 volumes:
   postgres-data:
+
+networks:
+  frontend:
+  backend:
+    internal: true
