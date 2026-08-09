@@ -66,13 +66,16 @@ func (h *Handler) AnalyzeGames(w http.ResponseWriter, r *http.Request) {
 			playerColor = chess.Black
 		} else {
 			// p = chess.NoColor
-			http.Error(w, "invalid username", http.StatusBadRequest)
+			slog.Error("analysis failed, chess.NoColor")
+			http.Error(w, "unable to analyze game", http.StatusBadRequest)
 			return
 		}
 
 		gameAnalysis, err := h.Analyzer.AnalyzeGame(game, playerColor)
 		if err != nil {
+			slog.Error("analysis failed", "err", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 		analyzedGames = append(analyzedGames, *gameAnalysis)
 	}
@@ -285,6 +288,14 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
+type Me struct {
+	ID               int64              `json:"id"`
+	Email            string             `json:"email"`
+	ChessComUsername string             `json:"chess_com_username"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
 func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 	userId, ok := auth.UserIDFromContext(r.Context())
 	if !ok {
@@ -297,7 +308,16 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "error getting user info", http.StatusInternalServerError)
 		return
 	}
-	data, err := json.Marshal(userInfo)
+
+	me := Me{
+		ID: userInfo.ID,
+		Email: userInfo.Email,
+		ChessComUsername: userInfo.ChessComUsername,
+		CreatedAt: userInfo.CreatedAt,
+		UpdatedAt: userInfo.UpdatedAt,
+	}
+
+	data, err := json.Marshal(me)
 	if err != nil {
 		slog.Error(
 			"error marshalling response",

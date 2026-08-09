@@ -47,7 +47,10 @@ func main() {
 	}
 	defer eng.Close()
 
-	a, err := analyzer.NewAnalyzer(eng, analyzer.DefaultConfig())
+	analysisConfig := analyzer.DefaultConfig()
+	analysisConfig.Threads = 1
+	analysisConfig.HashMB = 128
+	a, err := analyzer.NewAnalyzer(eng, analysisConfig)
 	if err != nil {
 		panic(err)
 	}
@@ -63,7 +66,7 @@ func main() {
 
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
-
+	r.Use(middleware.Recoverer)
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   []string{"https://*", "http://*"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
