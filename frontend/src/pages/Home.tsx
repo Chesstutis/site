@@ -1,4 +1,4 @@
-import { Link } from "react-router";
+vscodevscodeimport { Link } from "react-router";
 import { buttonVariants } from "@/components/ui/button";
 import {
     Card,
@@ -49,7 +49,7 @@ export default function Home() {
                             practice the moves you actually missed.
                         </p>
                         <Link
-                            to="/start"
+                            to="/signup"
                             className={buttonVariants({
                                 size: "lg",
                                 className: "mt-8",
