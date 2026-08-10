@@ -47,6 +47,19 @@ func main() {
 	}
 	defer eng.Close()
 
+	betaUsername := os.Getenv("BETA_USERNAME")
+	betaPassword := os.Getenv("BETA_PASSWORD")
+
+	if betaUsername == "" || betaPassword == "" {
+		log.Fatal("beta username and password are required")
+	}
+	betaAuth := middleware.BasicAuth(
+		"Chesstutis Private Beta",
+		map[string]string{
+			betaUsername: betaPassword,
+		},
+	)
+
 	analysisConfig := analyzer.DefaultConfig()
 	analysisConfig.Threads = 1
 	analysisConfig.HashMB = 128
@@ -83,10 +96,12 @@ func main() {
 	// r.Handle("/metrics", observability.HandleMetrics())
 	// r.Get("/ping", h.PingHandler)
 	r.Route("/api", func(r chi.Router) {
-		r.Route("/auth", func(r chi.Router) {
-			r.Post("/signup", h.Signup)
-			r.Post("/login", h.Login)
-			// r.With(auth.RequireAuth(tokenSecret)).Post("/logout", h.Logout)
+
+		r.Group(func(r chi.Router) {
+			r.Use(betaAuth)
+
+			r.Post("/auth/signup", h.Signup)
+			r.Post("/auth/login", h.Login)
 		})
 
 		r.Group(func(r chi.Router) {
@@ -114,22 +129,36 @@ func main() {
 	}
 
 	// frontend routes
-	r.Get("/", serveIndex)
-	r.Get("/home", serveIndex)
-	r.Get("/solve", serveIndex)
-	r.Get("/login", serveIndex)
-	r.Get("/signup", serveIndex)
-	r.Get("/dashboard", serveIndex)
+	r.Group(func(r chi.Router) {
+		r.Use(betaAuth)
+		r.Get("/", serveIndex)
+		r.Get("/home", serveIndex)
+		r.Get("/solve", serveIndex)
+		r.Get("/login", serveIndex)
+		r.Get("/signup", serveIndex)
+		r.Get("/dashboard", serveIndex)
 
-	r.Handle("/assets/*", http.FileServer(http.FS(distFS)))
-
-	r.NotFound(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet || r.Method == http.MethodHead {
-			serveIndex(w, r)
-			return
-		}
-		http.NotFound(w, r)
+		r.Handle("/assets/*", http.FileServer(http.FS(distFS)))
 	})
+
+	betaFallback := betaAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+    		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+        		serveIndex(w, r)
+        		return
+    		}
+
+    		http.NotFound(w, r)
+	}))
+
+	r.NotFound(betaFallback.ServeHTTP)
+
+	//r.NotFound(func(w http.ResponseWriter, r *http.Request) {
+	//	if r.Method == http.MethodGet || r.Method == http.MethodHead {
+	//		serveIndex(w, r)
+	//		return
+	//	}
+	//	http.NotFound(w, r)
+	//})
 
 	serverAddr := os.Getenv("SERVER_ADDR")
 	if serverAddr == "" {
