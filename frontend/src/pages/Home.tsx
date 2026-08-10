@@ -1,4 +1,4 @@
-vscodevscodeimport { Link } from "react-router";
+import { Link } from "react-router";
 import { buttonVariants } from "@/components/ui/button";
 import {
     Card,
