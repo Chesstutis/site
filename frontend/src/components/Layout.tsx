@@ -51,7 +51,7 @@ export default function Layout() {
                     <NavLink
                         to={home}
                         className="group flex min-w-0 items-center gap-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 sm:gap-3"
-                        aria-label="Chesstutis.com home"
+                        aria-label="Chesstutis.org home"
                     >
                         <span
                             className="grid size-9 shrink-0 grid-cols-2 overflow-hidden rounded-lg border border-primary/30 shadow-xs"
@@ -63,7 +63,7 @@ export default function Layout() {
                             <span className="bg-primary" />
                         </span>
                         <span className="truncate text-base font-semibold tracking-tight transition-colors group-hover:text-primary sm:text-lg">
-                            Chesstutis.com
+                            Chesstutis.org
                         </span>
                     </NavLink>
 
@@ -178,7 +178,7 @@ export default function Layout() {
             <footer className="border-t bg-card">
                 <div className="mx-auto flex w-full max-w-6xl flex-col items-center justify-between gap-3 px-4 py-5 text-center text-sm text-muted-foreground sm:flex-row sm:px-6 sm:text-left">
                     <p>
-                        &copy; {new Date().getFullYear()} Chesstutis.com. Built
+                        &copy; {new Date().getFullYear()} Chesstutis.org. Built
                         for better moves.
                     </p>
                     <a
