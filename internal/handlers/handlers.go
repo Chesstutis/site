@@ -399,5 +399,85 @@ func (h *Handler) PuzzleStats(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
+	tok, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		slog.Error(
+			"error getting refresh token from header",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 
+	tokInfo, err := h.Queries.GetRefreshToken(r.Context(), tok)
+	if err != nil {
+		slog.Error(
+			"error getting refresh token from database",
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	now := time.Now().UTC()
+
+	if tokInfo.RevokedAt.Valid {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if !now.Before(tokInfo.ExpiresAt.Time) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	type RefreshResponse struct {
+		AccessToken string `json:"token"`
+	}
+
+	accessToken, err := auth.MakeJWT(
+		tokInfo.UserID,
+		h.JWT_SECRET,
+		time.Hour,
+	)
+	if err != nil {
+		slog.Error(
+			"error generating access token",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	render.Status(r, http.StatusOK)
+	render.JSON(w, r, RefreshResponse{
+		AccessToken: accessToken,
+	})
+}
+
+func (h *Handler) Revoke(w http.ResponseWriter, r *http.Request) {
+	tok, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		http.Error(w, "unauthorizes", http.StatusUnauthorized)
+		return
+	}
+
+	rowsAffected, err := h.Queries.RevokeRefreshToken(r.Context(), tok)
+	if err != nil {
+		slog.Error(
+			"error revoking refresh token in database",
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if rowsAffected == 0 {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

@@ -5,11 +5,11 @@ import (
 	"embed"
 	"fmt"
 	"io/fs"
-	"net/http"
+	"log"
 	"net"
+	"net/http"
 	"os"
 	"time"
-	"log"
 
 	"github.com/chesstutis/analyzer"
 	"github.com/corentings/chess/v2/uci"
@@ -102,8 +102,10 @@ func main() {
 
 			r.Post("/auth/signup", h.Signup)
 			r.Post("/auth/login", h.Login)
-			// r.Post("/auth/refresh", h.Refresh)
 		})
+
+		r.Post("/auth/refresh", h.Refresh)
+		r.Post("/auth/revoke", h.Revoke)
 
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(tokenSecret))
@@ -143,12 +145,12 @@ func main() {
 	})
 
 	betaFallback := betaAuth(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-    		if r.Method == http.MethodGet || r.Method == http.MethodHead {
-        		serveIndex(w, r)
-        		return
-    		}
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			serveIndex(w, r)
+			return
+		}
 
-    		http.NotFound(w, r)
+		http.NotFound(w, r)
 	}))
 
 	r.NotFound(betaFallback.ServeHTTP)
@@ -172,13 +174,13 @@ func main() {
 	}
 
 	server := &http.Server{
-		Addr: net.JoinHostPort(serverAddr, serverPort),
-		Handler: r,
+		Addr:              net.JoinHostPort(serverAddr, serverPort),
+		Handler:           r,
 		ReadHeaderTimeout: 5 * time.Second,
-		ReadTimeout: 15 * time.Second,
-		WriteTimeout: 30 * time.Second,
-		IdleTimeout: 60 * time.Second,
-		MaxHeaderBytes: 1 << 20,
+		ReadTimeout:       15 * time.Second,
+		WriteTimeout:      30 * time.Second,
+		IdleTimeout:       60 * time.Second,
+		MaxHeaderBytes:    1 << 20,
 	}
 
 	fmt.Printf("app starter at http://localhost:%s\n", serverPort)
