@@ -102,6 +102,7 @@ func main() {
 
 			r.Post("/auth/signup", h.Signup)
 			r.Post("/auth/login", h.Login)
+			// r.Post("/auth/refresh", h.Refresh)
 		})
 
 		r.Group(func(r chi.Router) {

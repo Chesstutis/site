@@ -206,6 +206,7 @@ type User struct {
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 	Token            string             `json:"token"`
+	RefreshToken     string             `json:"refresh_token"`
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
@@ -255,7 +256,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jwt, err := auth.MakeJWT(userInfo.ID, h.JWT_SECRET, time.Hour*24)
+	jwt, err := auth.MakeJWT(userInfo.ID, h.JWT_SECRET, time.Hour)
 	if err != nil {
 		slog.Error(
 			"error generating JWT",
@@ -263,7 +264,40 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 			"err", err,
 		)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
 	}
+
+	refreshToken, err := auth.MakeRefreshToken()
+	if err != nil {
+		slog.Error(
+			"error generating refresh token",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	expiresAt := time.Now().UTC().Add(time.Hour * 24 * 60)
+	_, err = h.Queries.CreateRefreshToken(r.Context(), db.CreateRefreshTokenParams{
+		Token:  refreshToken,
+		UserID: userInfo.ID,
+		ExpiresAt: pgtype.Timestamptz{
+			Time:  expiresAt,
+			Valid: true,
+		},
+	})
+
+	if err != nil {
+		slog.Error(
+			"error storing refresh token",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
 	resp := User{
 		ID:               userInfo.ID,
 		Email:            userInfo.Email,
@@ -271,6 +305,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:        userInfo.CreatedAt,
 		UpdatedAt:        userInfo.UpdatedAt,
 		Token:            jwt,
+		RefreshToken:     refreshToken,
 	}
 
 	data, err := json.Marshal(resp)
@@ -310,11 +345,11 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	me := Me{
-		ID: userInfo.ID,
-		Email: userInfo.Email,
+		ID:               userInfo.ID,
+		Email:            userInfo.Email,
 		ChessComUsername: userInfo.ChessComUsername,
-		CreatedAt: userInfo.CreatedAt,
-		UpdatedAt: userInfo.UpdatedAt,
+		CreatedAt:        userInfo.CreatedAt,
+		UpdatedAt:        userInfo.UpdatedAt,
 	}
 
 	data, err := json.Marshal(me)
@@ -361,4 +396,8 @@ func (h *Handler) PuzzleStats(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write(data)
+}
+
+func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
+
 }
