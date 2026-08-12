@@ -186,7 +186,7 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	refreshToken, err := auth.MakeRefreshToken()
+	rawToken, err := auth.MakeRefreshToken()
 	if err != nil {
 		slog.Error(
 			"error generating refresh token",
@@ -197,9 +197,11 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tokenHash := auth.HashRefreshToken(rawToken)
+
 	expiresAt := time.Now().UTC().Add(time.Hour * 24 * 60)
 	_, err = h.Queries.CreateRefreshToken(r.Context(), db.CreateRefreshTokenParams{
-		Token:  refreshToken,
+		TokenHash:  tokenHash,
 		UserID: user.ID,
 		ExpiresAt: pgtype.Timestamptz{
 			Time:  expiresAt,
@@ -217,7 +219,6 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-
 	response := AuthResponse{
 		ID:               user.ID,
 		Email:            user.Email,
@@ -225,7 +226,7 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:        user.CreatedAt,
 		UpdatedAt:        user.UpdatedAt,
 		Token:            token,
-		RefreshToken:     refreshToken,
+		RefreshToken:     rawToken,
 	}
 
 	render.Status(r, http.StatusCreated)
@@ -300,7 +301,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	refreshToken, err := auth.MakeRefreshToken()
+	rawToken, err := auth.MakeRefreshToken()
 	if err != nil {
 		slog.Error(
 			"error generating refresh token",
@@ -311,9 +312,11 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	tokenHash := auth.HashRefreshToken(rawToken)
+
 	expiresAt := time.Now().UTC().Add(time.Hour * 24 * 60)
 	_, err = h.Queries.CreateRefreshToken(r.Context(), db.CreateRefreshTokenParams{
-		Token:  refreshToken,
+		TokenHash:  tokenHash,
 		UserID: userInfo.ID,
 		ExpiresAt: pgtype.Timestamptz{
 			Time:  expiresAt,
@@ -338,7 +341,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		CreatedAt:        userInfo.CreatedAt,
 		UpdatedAt:        userInfo.UpdatedAt,
 		Token:            jwt,
-		RefreshToken:     refreshToken,
+		RefreshToken:     rawToken,
 	}
 
 	data, err := json.Marshal(resp)
@@ -443,13 +446,15 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	tokInfo, err := h.Queries.GetRefreshToken(r.Context(), tok)
+	tokHash := auth.HashRefreshToken(tok)
+
+	tokInfo, err := h.Queries.GetRefreshToken(r.Context(), tokHash)
 	if err != nil {
 		slog.Error(
 			"error getting refresh token from database",
 			"err", err,
 		)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
@@ -497,7 +502,9 @@ func (h *Handler) Revoke(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	rowsAffected, err := h.Queries.RevokeRefreshToken(r.Context(), tok)
+	tokHash := auth.HashRefreshToken(tok)
+
+	rowsAffected, err := h.Queries.RevokeRefreshToken(r.Context(), tokHash)
 	if err != nil {
 		slog.Error(
 			"error revoking refresh token in database",

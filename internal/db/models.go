@@ -30,7 +30,7 @@ type Puzzle struct {
 }
 
 type RefreshToken struct {
-	Token     string             `json:"token"`
+	TokenHash string             `json:"token_hash"`
 	UserID    int64              `json:"user_id"`
 	CreatedAt pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`

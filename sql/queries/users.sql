@@ -23,7 +23,7 @@ SELECT * FROM users
 WHERE email = $1;
 
 -- name: CreateRefreshToken :one
-INSERT into refresh_tokens (token, user_id, expires_at)
+INSERT into refresh_tokens (token_hash, user_id, expires_at)
 VALUES (
     $1,
     $2,
@@ -33,12 +33,12 @@ RETURNING *;
 
 -- name: GetRefreshToken :one
 SELECT * FROM refresh_tokens
-WHERE token = $1;
+WHERE token_hash = $1;
 
 -- name: RevokeRefreshToken :execrows
 UPDATE refresh_tokens
 SET 
     revoked_at = NOW(),
     updated_at = NOW()
-WHERE token = $1
+WHERE token_hash = $1
 AND revoked_at IS NULL;
