@@ -40,5 +40,5 @@ UPDATE refresh_tokens
 SET 
     revoked_at = NOW(),
     updated_at = NOW()
-WHERE token = sqlc.arg(token)
+WHERE token = $1
 AND revoked_at IS NULL;

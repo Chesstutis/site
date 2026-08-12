@@ -186,20 +186,53 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := User{
+	refreshToken, err := auth.MakeRefreshToken()
+	if err != nil {
+		slog.Error(
+			"error generating refresh token",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	expiresAt := time.Now().UTC().Add(time.Hour * 24 * 60)
+	_, err = h.Queries.CreateRefreshToken(r.Context(), db.CreateRefreshTokenParams{
+		Token:  refreshToken,
+		UserID: user.ID,
+		ExpiresAt: pgtype.Timestamptz{
+			Time:  expiresAt,
+			Valid: true,
+		},
+	})
+
+	if err != nil {
+		slog.Error(
+			"error storing refresh token",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+
+	response := AuthResponse{
 		ID:               user.ID,
 		Email:            user.Email,
 		ChessComUsername: user.ChessComUsername,
 		CreatedAt:        user.CreatedAt,
 		UpdatedAt:        user.UpdatedAt,
 		Token:            token,
+		RefreshToken:     refreshToken,
 	}
 
 	render.Status(r, http.StatusCreated)
 	render.JSON(w, r, response)
 }
 
-type User struct {
+type AuthResponse struct {
 	ID               int64              `json:"id"`
 	Email            string             `json:"email"`
 	ChessComUsername string             `json:"chess_com_username"`
@@ -298,7 +331,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := User{
+	resp := AuthResponse{
 		ID:               userInfo.ID,
 		Email:            userInfo.Email,
 		ChessComUsername: userInfo.ChessComUsername,
@@ -460,7 +493,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 func (h *Handler) Revoke(w http.ResponseWriter, r *http.Request) {
 	tok, err := auth.GetBearerToken(r.Header)
 	if err != nil {
-		http.Error(w, "unauthorizes", http.StatusUnauthorized)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
