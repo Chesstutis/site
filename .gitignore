@@ -1,3 +1,14 @@
 .env
 .DS_Store
 site
+.env.*
+!.env.template
+
+certbot/
+backups/
+*.pem
+*.key
+*.p12
+*.pfx
+*.dump
+*.sql.gz

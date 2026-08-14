@@ -66,13 +66,16 @@ func (h *Handler) AnalyzeGames(w http.ResponseWriter, r *http.Request) {
 			playerColor = chess.Black
 		} else {
 			// p = chess.NoColor
-			http.Error(w, "invalid username", http.StatusBadRequest)
+			slog.Error("analysis failed, chess.NoColor")
+			http.Error(w, "unable to analyze game", http.StatusBadRequest)
 			return
 		}
 
 		gameAnalysis, err := h.Analyzer.AnalyzeGame(game, playerColor)
 		if err != nil {
+			slog.Error("analysis failed", "err", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
 		}
 		analyzedGames = append(analyzedGames, *gameAnalysis)
 	}
@@ -183,26 +186,61 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	response := User{
+	rawToken, err := auth.MakeRefreshToken()
+	if err != nil {
+		slog.Error(
+			"error generating refresh token",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	tokenHash := auth.HashRefreshToken(rawToken)
+
+	expiresAt := time.Now().UTC().Add(time.Hour * 24 * 60)
+	_, err = h.Queries.CreateRefreshToken(r.Context(), db.CreateRefreshTokenParams{
+		TokenHash:  tokenHash,
+		UserID: user.ID,
+		ExpiresAt: pgtype.Timestamptz{
+			Time:  expiresAt,
+			Valid: true,
+		},
+	})
+
+	if err != nil {
+		slog.Error(
+			"error storing refresh token",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	response := AuthResponse{
 		ID:               user.ID,
 		Email:            user.Email,
 		ChessComUsername: user.ChessComUsername,
 		CreatedAt:        user.CreatedAt,
 		UpdatedAt:        user.UpdatedAt,
 		Token:            token,
+		RefreshToken:     rawToken,
 	}
 
 	render.Status(r, http.StatusCreated)
 	render.JSON(w, r, response)
 }
 
-type User struct {
+type AuthResponse struct {
 	ID               int64              `json:"id"`
 	Email            string             `json:"email"`
 	ChessComUsername string             `json:"chess_com_username"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 	Token            string             `json:"token"`
+	RefreshToken     string             `json:"refresh_token"`
 }
 
 func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
@@ -252,7 +290,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jwt, err := auth.MakeJWT(userInfo.ID, h.JWT_SECRET, time.Hour*24)
+	jwt, err := auth.MakeJWT(userInfo.ID, h.JWT_SECRET, time.Hour)
 	if err != nil {
 		slog.Error(
 			"error generating JWT",
@@ -260,14 +298,50 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 			"err", err,
 		)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
 	}
-	resp := User{
+
+	rawToken, err := auth.MakeRefreshToken()
+	if err != nil {
+		slog.Error(
+			"error generating refresh token",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	tokenHash := auth.HashRefreshToken(rawToken)
+
+	expiresAt := time.Now().UTC().Add(time.Hour * 24 * 60)
+	_, err = h.Queries.CreateRefreshToken(r.Context(), db.CreateRefreshTokenParams{
+		TokenHash:  tokenHash,
+		UserID: userInfo.ID,
+		ExpiresAt: pgtype.Timestamptz{
+			Time:  expiresAt,
+			Valid: true,
+		},
+	})
+
+	if err != nil {
+		slog.Error(
+			"error storing refresh token",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	resp := AuthResponse{
 		ID:               userInfo.ID,
 		Email:            userInfo.Email,
 		ChessComUsername: userInfo.ChessComUsername,
 		CreatedAt:        userInfo.CreatedAt,
 		UpdatedAt:        userInfo.UpdatedAt,
 		Token:            jwt,
+		RefreshToken:     rawToken,
 	}
 
 	data, err := json.Marshal(resp)
@@ -285,6 +359,14 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	w.Write(data)
 }
 
+type Me struct {
+	ID               int64              `json:"id"`
+	Email            string             `json:"email"`
+	ChessComUsername string             `json:"chess_com_username"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
 func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 	userId, ok := auth.UserIDFromContext(r.Context())
 	if !ok {
@@ -297,7 +379,16 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "error getting user info", http.StatusInternalServerError)
 		return
 	}
-	data, err := json.Marshal(userInfo)
+
+	me := Me{
+		ID:               userInfo.ID,
+		Email:            userInfo.Email,
+		ChessComUsername: userInfo.ChessComUsername,
+		CreatedAt:        userInfo.CreatedAt,
+		UpdatedAt:        userInfo.UpdatedAt,
+	}
+
+	data, err := json.Marshal(me)
 	if err != nil {
 		slog.Error(
 			"error marshalling response",
@@ -341,4 +432,92 @@ func (h *Handler) PuzzleStats(w http.ResponseWriter, r *http.Request) {
 	}
 	w.WriteHeader(http.StatusOK)
 	w.Write(data)
+}
+
+func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
+	tok, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		slog.Error(
+			"error getting refresh token from header",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	tokHash := auth.HashRefreshToken(tok)
+
+	tokInfo, err := h.Queries.GetRefreshToken(r.Context(), tokHash)
+	if err != nil {
+		slog.Error(
+			"error getting refresh token from database",
+			"err", err,
+		)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	now := time.Now().UTC()
+
+	if tokInfo.RevokedAt.Valid {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	if !now.Before(tokInfo.ExpiresAt.Time) {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	type RefreshResponse struct {
+		AccessToken string `json:"token"`
+	}
+
+	accessToken, err := auth.MakeJWT(
+		tokInfo.UserID,
+		h.JWT_SECRET,
+		time.Hour,
+	)
+	if err != nil {
+		slog.Error(
+			"error generating access token",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	render.Status(r, http.StatusOK)
+	render.JSON(w, r, RefreshResponse{
+		AccessToken: accessToken,
+	})
+}
+
+func (h *Handler) Revoke(w http.ResponseWriter, r *http.Request) {
+	tok, err := auth.GetBearerToken(r.Header)
+	if err != nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	tokHash := auth.HashRefreshToken(tok)
+
+	rowsAffected, err := h.Queries.RevokeRefreshToken(r.Context(), tokHash)
+	if err != nil {
+		slog.Error(
+			"error revoking refresh token in database",
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if rowsAffected == 0 {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
 }

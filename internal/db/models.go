@@ -29,6 +29,15 @@ type Puzzle struct {
 	SolvedAt  pgtype.Timestamptz `json:"solved_at"`
 }
 
+type RefreshToken struct {
+	TokenHash string             `json:"token_hash"`
+	UserID    int64              `json:"user_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
+}
+
 type User struct {
 	ID               int64              `json:"id"`
 	Email            string             `json:"email"`

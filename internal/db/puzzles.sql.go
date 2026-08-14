@@ -38,7 +38,7 @@ SELECT
     COUNT(*) FILTER (WHERE status = 'solved') AS solved,
     COUNT(*) FILTER (WHERE status <> 'solved') AS unsolved,
     COUNT(*) AS total
-FROM puzzles 
+FROM puzzles
 WHERE user_id = $1
 `
 
