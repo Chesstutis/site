@@ -1,3 +1,8 @@
+![Go Version](https://img.shields.io/badge/go-1.26-00ADD8?logo=go)
+[![Tests](https://github.com/chesstutis/site/actions/workflows/test.yml/badge.svg)](
+https://github.com/chesstutis/site/actions/workflows/test.yml)
+[![codecov](https://codecov.io/github/chesstutis/site/graph/badge.svg)](
+https://codecov.io/github/chesstutis/site)
 # Chesstutis
 
 Chesstutis turns mistakes from a player's recent Chess.com games into personalized chess puzzles. It fetches game data from Chess.com, analyzes positions with Stockfish, and presents missed opportunities as interactive training exercises.
