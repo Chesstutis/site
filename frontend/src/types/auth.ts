@@ -1,5 +1,7 @@
 import type { ReactNode } from "react";
 
+export class EmailNotVerifiedError extends Error {}
+
 export type loginReq = {
     email: string;
     password: string;
@@ -28,6 +30,8 @@ export type AuthResponse = AuthUser & {
     token: string;
 };
 
+export type SignupResponse = AuthUser;
+
 export type AuthSession = {
     user: AuthUser;
     token: string;
@@ -44,6 +48,7 @@ export type AuthContextValue = {
     login: (credentials: loginReq) => Promise<void>;
     signup: (credentials: signupReq) => Promise<void>;
     logout: () => Promise<void>;
+    resendVerification: (email: string) => Promise<void>;
 };
 
 export type AuthProviderProps = {

@@ -11,6 +11,34 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const createEmailVerificationToken = `-- name: CreateEmailVerificationToken :one
+INSERT INTO email_verification_tokens (token_hash, user_id, expires_at)
+VALUES (
+    $1,
+    $2,
+    $3
+)
+RETURNING token_hash, user_id, created_at, expires_at
+`
+
+type CreateEmailVerificationTokenParams struct {
+	TokenHash string             `json:"token_hash"`
+	UserID    int64              `json:"user_id"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+}
+
+func (q *Queries) CreateEmailVerificationToken(ctx context.Context, arg CreateEmailVerificationTokenParams) (EmailVerificationToken, error) {
+	row := q.db.QueryRow(ctx, createEmailVerificationToken, arg.TokenHash, arg.UserID, arg.ExpiresAt)
+	var i EmailVerificationToken
+	err := row.Scan(
+		&i.TokenHash,
+		&i.UserID,
+		&i.CreatedAt,
+		&i.ExpiresAt,
+	)
+	return i, err
+}
+
 const createRefreshToken = `-- name: CreateRefreshToken :one
 INSERT into refresh_tokens (token_hash, user_id, expires_at)
 VALUES (
@@ -48,7 +76,7 @@ VALUES (
     $2,
     $3
 )
-RETURNING id, email, password_hash, chess_com_username, created_at, updated_at
+RETURNING id, email, password_hash, chess_com_username, created_at, updated_at, email_verified_at
 `
 
 type CreateUserParams struct {
@@ -67,15 +95,36 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 		&i.ChessComUsername,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
+}
+
+const deleteEmailVerificationToken = `-- name: DeleteEmailVerificationToken :exec
+DELETE FROM email_verification_tokens
+WHERE token_hash = $1
+`
+
+func (q *Queries) DeleteEmailVerificationToken(ctx context.Context, tokenHash string) error {
+	_, err := q.db.Exec(ctx, deleteEmailVerificationToken, tokenHash)
+	return err
+}
+
+const deleteEmailVerificationTokensForUser = `-- name: DeleteEmailVerificationTokensForUser :exec
+DELETE FROM email_verification_tokens
+WHERE user_id = $1
+`
+
+func (q *Queries) DeleteEmailVerificationTokensForUser(ctx context.Context, userID int64) error {
+	_, err := q.db.Exec(ctx, deleteEmailVerificationTokensForUser, userID)
+	return err
 }
 
 const deleteUser = `-- name: DeleteUser :one
 
 DELETE FROM users
 WHERE id = $1
-RETURNING id, email, password_hash, chess_com_username, created_at, updated_at
+RETURNING id, email, password_hash, chess_com_username, created_at, updated_at, email_verified_at
 `
 
 // -- name: UpdateUser :one
@@ -89,6 +138,24 @@ func (q *Queries) DeleteUser(ctx context.Context, id int64) (User, error) {
 		&i.ChessComUsername,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EmailVerifiedAt,
+	)
+	return i, err
+}
+
+const getEmailVerificationToken = `-- name: GetEmailVerificationToken :one
+SELECT token_hash, user_id, created_at, expires_at FROM email_verification_tokens
+WHERE token_hash = $1
+`
+
+func (q *Queries) GetEmailVerificationToken(ctx context.Context, tokenHash string) (EmailVerificationToken, error) {
+	row := q.db.QueryRow(ctx, getEmailVerificationToken, tokenHash)
+	var i EmailVerificationToken
+	err := row.Scan(
+		&i.TokenHash,
+		&i.UserID,
+		&i.CreatedAt,
+		&i.ExpiresAt,
 	)
 	return i, err
 }
@@ -113,7 +180,7 @@ func (q *Queries) GetRefreshToken(ctx context.Context, tokenHash string) (Refres
 }
 
 const getUserByEmail = `-- name: GetUserByEmail :one
-SELECT id, email, password_hash, chess_com_username, created_at, updated_at FROM users
+SELECT id, email, password_hash, chess_com_username, created_at, updated_at, email_verified_at FROM users
 WHERE email = $1
 `
 
@@ -127,12 +194,13 @@ func (q *Queries) GetUserByEmail(ctx context.Context, email string) (User, error
 		&i.ChessComUsername,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
 }
 
 const getUserById = `-- name: GetUserById :one
-SELECT id, email, password_hash, chess_com_username, created_at, updated_at FROM users
+SELECT id, email, password_hash, chess_com_username, created_at, updated_at, email_verified_at FROM users
 WHERE id = $1
 `
 
@@ -146,13 +214,27 @@ func (q *Queries) GetUserById(ctx context.Context, id int64) (User, error) {
 		&i.ChessComUsername,
 		&i.CreatedAt,
 		&i.UpdatedAt,
+		&i.EmailVerifiedAt,
 	)
 	return i, err
 }
 
+const markUserEmailVerified = `-- name: MarkUserEmailVerified :exec
+UPDATE users
+SET
+    email_verified_at = NOW(),
+    updated_at = NOW()
+WHERE id = $1
+`
+
+func (q *Queries) MarkUserEmailVerified(ctx context.Context, id int64) error {
+	_, err := q.db.Exec(ctx, markUserEmailVerified, id)
+	return err
+}
+
 const revokeRefreshToken = `-- name: RevokeRefreshToken :execrows
 UPDATE refresh_tokens
-SET 
+SET
     revoked_at = NOW(),
     updated_at = NOW()
 WHERE token_hash = $1

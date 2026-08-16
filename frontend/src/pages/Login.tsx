@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "@/components/AuthProvider"
+import { EmailNotVerifiedError } from "@/types/auth"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -12,22 +13,27 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { CircleAlert } from "lucide-react";
 
 export default function Signup() {
-    const { login } = useAuth();
+    const { login, resendVerification } = useAuth();
     const navigate = useNavigate();
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [needsVerification, setNeedsVerification] = useState(false);
+    const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "sent">("idle");
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         setError("");
+        setNeedsVerification(false);
+        setResendStatus("idle");
         setIsSubmitting(true);
 
         try {
@@ -38,11 +44,23 @@ export default function Signup() {
 
             navigate("/dashboard");
         } catch (error) {
+            if (error instanceof EmailNotVerifiedError) {
+                setNeedsVerification(true);
+            }
             setError(
                 error instanceof Error ? error.message : "Unable to log in",
             );
         } finally {
             setIsSubmitting(false);
+        }
+    }
+
+    async function handleResend() {
+        setResendStatus("sending");
+        try {
+            await resendVerification(email.trim().toLowerCase());
+        } finally {
+            setResendStatus("sent");
         }
     }
     return (
@@ -137,7 +155,24 @@ export default function Signup() {
                                 <Alert variant="destructive">
                                     <CircleAlert aria-hidden="true" />
                                     <AlertTitle>Unable to log in</AlertTitle>
-                                    <AlertDescription>{error}</AlertDescription>
+                                    <AlertDescription>
+                                        <span className="block">{error}</span>
+                                        {needsVerification ? (
+                                            <Button
+                                                type="button"
+                                                variant="link"
+                                                className="mt-1 h-auto p-0 text-destructive underline-offset-4"
+                                                onClick={handleResend}
+                                                disabled={resendStatus === "sending"}
+                                            >
+                                                {resendStatus === "sent"
+                                                    ? "Verification email sent"
+                                                    : resendStatus === "sending"
+                                                      ? "Sending…"
+                                                      : "Resend verification email"}
+                                            </Button>
+                                        ) : null}
+                                    </AlertDescription>
                                 </Alert>
                             ) : null}
 
@@ -162,10 +197,9 @@ export default function Signup() {
                                 <Label htmlFor="login-password">
                                     Password
                                 </Label>
-                                <Input
+                                <PasswordInput
                                     id="login-password"
                                     name="password"
-                                    type="password"
                                     value={password}
                                     onChange={(event) =>
                                         setPassword(event.target.value)

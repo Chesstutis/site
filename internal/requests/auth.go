@@ -13,3 +13,11 @@ type LoginReq struct {
 
 type Logout struct {
 }
+
+type VerifyEmailReq struct {
+	Token string `json:"token"`
+}
+
+type ResendVerificationReq struct {
+	Email string `json:"email"`
+}

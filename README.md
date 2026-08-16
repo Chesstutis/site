@@ -72,9 +72,21 @@ GOOSE_DRIVER=postgres
 GOOSE_DBSTRING=postgres://postgres:postgres@localhost:5432/chesstutis?sslmode=disable
 GOOSE_MIGRATION_DIR=sql/migrations
 JWT_SECRET=replace-with-a-long-random-secret
+BETA_USERNAME=replace-with-a-beta-username
+BETA_PASSWORD=replace-with-a-beta-password
+APP_BASE_URL=http://127.0.0.1:8080
+SMTP_HOST=smtp.example.com
+SMTP_PORT=587
+SMTP_USERNAME=replace-with-smtp-username
+SMTP_PASSWORD=replace-with-smtp-password
+SMTP_FROM=noreply@example.com
 ```
 
 The server loads `.env` automatically. Do not commit it; it contains database credentials and the JWT signing secret. You can generate a development secret with `openssl rand -hex 64`.
+
+The whole app currently sits behind an HTTP Basic Auth gate (`BETA_USERNAME`/`BETA_PASSWORD`) for the private beta — pick any local values for development.
+
+`APP_BASE_URL` is used to build links in outgoing emails (e.g. the email verification link) and should match wherever the server is actually reachable. `SMTP_*` configures the mailer used to send those emails; for local development, point it at a local catch-all SMTP server (e.g. [Mailpit](https://github.com/axllent/mailpit)) instead of a real provider.
 
 `STOCKFISH_PATH` must point to the Stockfish executable rather than its containing directory.
 

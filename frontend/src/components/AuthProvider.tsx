@@ -6,6 +6,7 @@ import {
     useState,
 } from "react";
 import { jwtDecode } from "jwt-decode";
+import { EmailNotVerifiedError } from "@/types/auth";
 import type {
     AuthContextValue,
     AuthPath,
@@ -14,6 +15,7 @@ import type {
     AuthSession,
     AuthStatus,
     AuthUser,
+    SignupResponse,
     StoredAuthSession,
     loginReq,
     signupReq,
@@ -74,10 +76,10 @@ function readStoredSession(): AuthSession | null {
     }
 }
 
-async function authenticate(
+async function authenticate<T>(
     path: AuthPath,
     credentials: loginReq | signupReq,
-): Promise<AuthResponse> {
+): Promise<T> {
     const response = await fetch(`/api/auth${path}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -85,11 +87,28 @@ async function authenticate(
     });
 
     if (!response.ok) {
-        const message = (await response.text()).trim();
+        const text = (await response.text()).trim();
+
+        let message = text;
+        let code: string | undefined;
+        try {
+            const data = JSON.parse(text) as { error?: string; message?: string };
+            code = data.error;
+            message = data.message ?? data.error ?? text;
+        } catch {
+            // Plain-text error body; use as-is.
+        }
+
+        if (code === "email_not_verified") {
+            throw new EmailNotVerifiedError(
+                message || "Please verify your email before logging in.",
+            );
+        }
+
         throw new Error(message || "Authentication failed");
     }
 
-    return response.json() as Promise<AuthResponse>;
+    return response.json() as Promise<T>;
 }
 
 export function AuthProvider({ children }: AuthProviderProps) {
@@ -147,17 +166,22 @@ export function AuthProvider({ children }: AuthProviderProps) {
 
     const login = useCallback(
         async (credentials: loginReq) => {
-            saveSession(await authenticate("/login", credentials));
+            saveSession(await authenticate<AuthResponse>("/login", credentials));
         },
         [saveSession],
     );
 
-    const signup = useCallback(
-        async (credentials: signupReq) => {
-            saveSession(await authenticate("/signup", credentials));
-        },
-        [saveSession],
-    );
+    const signup = useCallback(async (credentials: signupReq) => {
+        await authenticate<SignupResponse>("/signup", credentials);
+    }, []);
+
+    const resendVerification = useCallback(async (email: string) => {
+        await fetch("/api/auth/resend-verification", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ email }),
+        });
+    }, []);
 
     const logout = useCallback(async () => {
         const token = session?.token;
@@ -184,6 +208,7 @@ export function AuthProvider({ children }: AuthProviderProps) {
                 login,
                 signup,
                 logout,
+                resendVerification,
             }}
         >
             {children}

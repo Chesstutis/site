@@ -22,6 +22,7 @@ import (
 
 	"github.com/chesstutis/site/internal/auth"
 	"github.com/chesstutis/site/internal/db"
+	"github.com/chesstutis/site/internal/email"
 	"github.com/chesstutis/site/internal/handlers"
 	// "github.com/chesstutis/site/internal/observability"
 	// "github.com/grafana/pyroscope-go"
@@ -74,8 +75,21 @@ func main() {
 		panic("JWT_SECRET is required")
 	}
 
+	appBaseURL := os.Getenv("APP_BASE_URL")
+	if appBaseURL == "" {
+		log.Fatal("APP_BASE_URL is required")
+	}
+
+	mailer := email.NewMailer(email.Config{
+		Host:     os.Getenv("SMTP_HOST"),
+		Port:     os.Getenv("SMTP_PORT"),
+		Username: os.Getenv("SMTP_USERNAME"),
+		Password: os.Getenv("SMTP_PASSWORD"),
+		From:     os.Getenv("SMTP_FROM"),
+	})
+
 	r := chi.NewRouter()
-	h := handlers.New(queries, a, tokenSecret)
+	h := handlers.New(queries, a, tokenSecret, mailer, appBaseURL)
 
 	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
@@ -102,6 +116,8 @@ func main() {
 
 			r.Post("/auth/signup", h.Signup)
 			r.Post("/auth/login", h.Login)
+			r.Post("/auth/verify-email", h.VerifyEmail)
+			r.Post("/auth/resend-verification", h.ResendVerification)
 		})
 
 		r.Post("/auth/refresh", h.Refresh)
@@ -139,6 +155,7 @@ func main() {
 		r.Get("/solve", serveIndex)
 		r.Get("/login", serveIndex)
 		r.Get("/signup", serveIndex)
+		r.Get("/verify-email", serveIndex)
 		r.Get("/dashboard", serveIndex)
 
 		r.Handle("/assets/*", http.FileServer(http.FS(distFS)))

@@ -1,8 +1,10 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -11,6 +13,7 @@ import (
 	"github.com/chesstutis/analyzer"
 	"github.com/chesstutis/site/internal/auth"
 	"github.com/chesstutis/site/internal/db"
+	"github.com/chesstutis/site/internal/email"
 	"github.com/chesstutis/site/internal/requests"
 	"github.com/corentings/chess/v2"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -24,14 +27,45 @@ type Handler struct {
 	Queries    *db.Queries
 	Analyzer   *analyzer.Analyzer
 	JWT_SECRET string
+	Mailer     *email.Mailer
+	AppBaseURL string
 }
 
-func New(dbpool *db.Queries, analyzer *analyzer.Analyzer, JWTSecret string) *Handler {
+func New(dbpool *db.Queries, analyzer *analyzer.Analyzer, JWTSecret string, mailer *email.Mailer, appBaseURL string) *Handler {
 	return &Handler{
 		Queries:    dbpool,
 		Analyzer:   analyzer,
 		JWT_SECRET: JWTSecret,
+		Mailer:     mailer,
+		AppBaseURL: appBaseURL,
 	}
+}
+
+
+func (h *Handler) sendVerificationEmail(ctx context.Context, userID int64, emailAddr string) error {
+	if err := h.Queries.DeleteEmailVerificationTokensForUser(ctx, userID); err != nil {
+		return fmt.Errorf("clear existing verification tokens: %w", err)
+	}
+
+	rawToken, err := auth.MakeRefreshToken()
+	if err != nil {
+		return fmt.Errorf("generate verification token: %w", err)
+	}
+
+	tokenHash := auth.HashRefreshToken(rawToken)
+	expiresAt := time.Now().UTC().Add(time.Hour * 24)
+
+	if _, err := h.Queries.CreateEmailVerificationToken(ctx, db.CreateEmailVerificationTokenParams{
+		TokenHash: tokenHash,
+		UserID:    userID,
+		ExpiresAt: pgtype.Timestamptz{Time: expiresAt, Valid: true},
+	}); err != nil {
+		return fmt.Errorf("store verification token: %w", err)
+	}
+
+	verifyURL := fmt.Sprintf("%s/verify-email?token=%s", h.AppBaseURL, rawToken)
+
+	return h.Mailer.SendVerificationEmail(emailAddr, verifyURL)
 }
 
 func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
@@ -175,62 +209,32 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := auth.MakeJWT(user.ID, h.JWT_SECRET, time.Hour*24)
-	if err != nil {
+	if err := h.sendVerificationEmail(r.Context(), user.ID, user.Email); err != nil {
 		slog.Error(
-			"error creating token",
+			"error sending verification email",
 			"request_id", middleware.GetReqID(r.Context()),
 			"err", err,
 		)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
 	}
 
-	rawToken, err := auth.MakeRefreshToken()
-	if err != nil {
-		slog.Error(
-			"error generating refresh token",
-			"request_id", middleware.GetReqID(r.Context()),
-			"err", err,
-		)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	tokenHash := auth.HashRefreshToken(rawToken)
-
-	expiresAt := time.Now().UTC().Add(time.Hour * 24 * 60)
-	_, err = h.Queries.CreateRefreshToken(r.Context(), db.CreateRefreshTokenParams{
-		TokenHash:  tokenHash,
-		UserID: user.ID,
-		ExpiresAt: pgtype.Timestamptz{
-			Time:  expiresAt,
-			Valid: true,
-		},
-	})
-
-	if err != nil {
-		slog.Error(
-			"error storing refresh token",
-			"request_id", middleware.GetReqID(r.Context()),
-			"err", err,
-		)
-		http.Error(w, "internal server error", http.StatusInternalServerError)
-		return
-	}
-
-	response := AuthResponse{
+	response := SignupResponse{
 		ID:               user.ID,
 		Email:            user.Email,
 		ChessComUsername: user.ChessComUsername,
 		CreatedAt:        user.CreatedAt,
 		UpdatedAt:        user.UpdatedAt,
-		Token:            token,
-		RefreshToken:     rawToken,
 	}
 
 	render.Status(r, http.StatusCreated)
 	render.JSON(w, r, response)
+}
+
+type SignupResponse struct {
+	ID               int64              `json:"id"`
+	Email            string             `json:"email"`
+	ChessComUsername string             `json:"chess_com_username"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
 }
 
 type AuthResponse struct {
@@ -287,6 +291,19 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 			"err", err,
 		)
 		http.Error(w, "invalid email or password", http.StatusUnauthorized)
+		return
+	}
+
+	if !userInfo.EmailVerifiedAt.Valid {
+		slog.Error(
+			"login blocked: email not verified",
+			"request_id", middleware.GetReqID(r.Context()),
+		)
+		render.Status(r, http.StatusForbidden)
+		render.JSON(w, r, map[string]string{
+			"error":   "email_not_verified",
+			"message": "please verify your email before logging in",
+		})
 		return
 	}
 
@@ -520,4 +537,91 @@ func (h *Handler) Revoke(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) VerifyEmail(w http.ResponseWriter, r *http.Request) {
+	var req requests.VerifyEmailReq
+
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	if req.Token == "" {
+		http.Error(w, "token is required", http.StatusBadRequest)
+		return
+	}
+
+	tokHash := auth.HashRefreshToken(req.Token)
+
+	tokInfo, err := h.Queries.GetEmailVerificationToken(r.Context(), tokHash)
+	if err != nil {
+		http.Error(w, "invalid or expired verification link", http.StatusBadRequest)
+		return
+	}
+
+	if !time.Now().UTC().Before(tokInfo.ExpiresAt.Time) {
+		http.Error(w, "invalid or expired verification link", http.StatusBadRequest)
+		return
+	}
+
+	if err := h.Queries.MarkUserEmailVerified(r.Context(), tokInfo.UserID); err != nil {
+		slog.Error(
+			"error marking user as verified",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	if err := h.Queries.DeleteEmailVerificationTokensForUser(r.Context(), tokInfo.UserID); err != nil {
+		slog.Error(
+			"error clearing verification tokens",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
+func (h *Handler) ResendVerification(w http.ResponseWriter, r *http.Request) {
+	var req requests.ResendVerificationReq
+
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+
+	if err := decoder.Decode(&req); err != nil {
+		http.Error(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	if req.Email == "" {
+		http.Error(w, "email is required", http.StatusBadRequest)
+		return
+	}
+
+	userInfo, err := h.Queries.GetUserByEmail(r.Context(), req.Email)
+	if err != nil || userInfo.EmailVerifiedAt.Valid {
+		// Don't reveal whether the account exists or is already verified.
+		w.WriteHeader(http.StatusOK)
+		return
+	}
+
+	if err := h.sendVerificationEmail(r.Context(), userInfo.ID, userInfo.Email); err != nil {
+		slog.Error(
+			"error sending verification email",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }

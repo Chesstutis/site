@@ -5,6 +5,7 @@ import Solve from "./pages/Solve";
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import VerifyEmail from "./pages/VerifyEmail";
 import Account from "./pages/Account";
 import NotFound from "./pages/NotFound"
 import Layout from "./components/Layout";
@@ -32,6 +33,7 @@ export default function App() {
                     <Route path="/" element={<HomeRoute />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/signup" element={<Signup />} />
+                    <Route path="/verify-email" element={<VerifyEmail />} />
                     <Route path="/dashboard" element={<Dashboard />} />
                     <Route path="/solve" element={<Solve />} />
                     <Route path="/account" element={<Account />} />

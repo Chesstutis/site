@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from "react";
-import { Link, useNavigate } from "react-router";
+import { Link } from "react-router";
 import { useAuth } from "@/components/AuthProvider"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -12,39 +12,54 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, MailCheck } from "lucide-react";
 
 export default function Signup() {
-    const { signup } = useAuth();
-    const navigate = useNavigate();
+    const { signup, resendVerification } = useAuth();
 
     const [email, setEmail] = useState("");
     const [password, setPassword] = useState("");
     const [chessUsername, setChessUsername] = useState("");
     const [error, setError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [submittedEmail, setSubmittedEmail] = useState<string | null>(null);
+    const [resendStatus, setResendStatus] = useState<"idle" | "sending" | "sent">("idle");
 
     async function handleSubmit(event: FormEvent<HTMLFormElement>) {
         event.preventDefault();
         setError("");
         setIsSubmitting(true);
 
+        const normalizedEmail = email.trim().toLowerCase();
+
         try {
             await signup({
-                email: email.trim().toLowerCase(),
+                email: normalizedEmail,
                 password,
                 chess_com_username: chessUsername.trim(),
             })
 
-            navigate("/dashboard");
+            setSubmittedEmail(normalizedEmail);
         } catch (error) {
             setError(
                 error instanceof Error ? error.message : "Unable to log in",
             );
         } finally {
             setIsSubmitting(false);
+        }
+    }
+
+    async function handleResend() {
+        if (!submittedEmail) return;
+
+        setResendStatus("sending");
+        try {
+            await resendVerification(submittedEmail);
+        } finally {
+            setResendStatus("sent");
         }
     }
     return (
@@ -100,6 +115,72 @@ export default function Signup() {
                 </aside>
 
                 <Card className="justify-center rounded-none bg-card py-8 shadow-none ring-0 [--card-spacing:--spacing(6)] sm:py-12">
+                    {submittedEmail ? (
+                        <>
+                            <CardHeader>
+                                <Link
+                                    to="/"
+                                    className="mb-5 flex w-fit items-center gap-2 rounded-md font-semibold text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring lg:hidden"
+                                >
+                                    <span
+                                        className="grid size-8 grid-cols-2 overflow-hidden rounded-md border border-primary/30"
+                                        aria-hidden="true"
+                                    >
+                                        <span className="bg-primary" />
+                                        <span />
+                                        <span />
+                                        <span className="bg-primary" />
+                                    </span>
+                                    Chesstutis
+                                </Link>
+                                <p className="font-mono text-xs font-semibold uppercase tracking-[0.18em] text-primary">
+                                    Almost there
+                                </p>
+                                <CardTitle>
+                                    <h1 className="text-3xl tracking-tight">
+                                        Check your email
+                                    </h1>
+                                </CardTitle>
+                                <CardDescription className="max-w-md leading-6">
+                                    We sent a verification link to{" "}
+                                    <span className="font-medium text-foreground">
+                                        {submittedEmail}
+                                    </span>
+                                    . Click it to activate your account, then
+                                    log in.
+                                </CardDescription>
+                            </CardHeader>
+
+                            <CardContent className="flex flex-col items-start gap-4">
+                                <MailCheck
+                                    className="size-10 text-primary"
+                                    aria-hidden="true"
+                                />
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    onClick={handleResend}
+                                    disabled={resendStatus === "sending"}
+                                >
+                                    {resendStatus === "sent"
+                                        ? "Verification email sent"
+                                        : resendStatus === "sending"
+                                          ? "Sending…"
+                                          : "Resend verification email"}
+                                </Button>
+                            </CardContent>
+
+                            <CardFooter className="justify-center text-center text-sm text-muted-foreground">
+                                <Link
+                                    to="/login"
+                                    className="font-medium text-foreground underline-offset-4 hover:text-primary hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                                >
+                                    Back to log in
+                                </Link>
+                            </CardFooter>
+                        </>
+                    ) : (
+                        <>
                     <CardHeader>
                         <Link
                             to="/"
@@ -193,10 +274,9 @@ export default function Signup() {
                                 <Label htmlFor="signup-password">
                                     Password
                                 </Label>
-                                <Input
+                                <PasswordInput
                                     id="signup-password"
                                     name="password"
-                                    type="password"
                                     value={password}
                                     onChange={(event) =>
                                         setPassword(event.target.value)
@@ -237,6 +317,8 @@ export default function Signup() {
                             Log in
                         </Link>
                     </CardFooter>
+                        </>
+                    )}
                 </Card>
             </section>
         </div>

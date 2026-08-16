@@ -18,6 +18,13 @@ type ChessComRatingSnapshot struct {
 	DailyRating  pgtype.Int4        `json:"daily_rating"`
 }
 
+type EmailVerificationToken struct {
+	TokenHash string             `json:"token_hash"`
+	UserID    int64              `json:"user_id"`
+	CreatedAt pgtype.Timestamptz `json:"created_at"`
+	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
+}
+
 type Puzzle struct {
 	ID        int64              `json:"id"`
 	GameUuid  pgtype.UUID        `json:"game_uuid"`
@@ -45,4 +52,5 @@ type User struct {
 	ChessComUsername string             `json:"chess_com_username"`
 	CreatedAt        pgtype.Timestamptz `json:"created_at"`
 	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+	EmailVerifiedAt  pgtype.Timestamptz `json:"email_verified_at"`
 }

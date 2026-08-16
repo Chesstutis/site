@@ -37,8 +37,36 @@ WHERE token_hash = $1;
 
 -- name: RevokeRefreshToken :execrows
 UPDATE refresh_tokens
-SET 
+SET
     revoked_at = NOW(),
     updated_at = NOW()
 WHERE token_hash = $1
 AND revoked_at IS NULL;
+
+-- name: CreateEmailVerificationToken :one
+INSERT INTO email_verification_tokens (token_hash, user_id, expires_at)
+VALUES (
+    $1,
+    $2,
+    $3
+)
+RETURNING *;
+
+-- name: GetEmailVerificationToken :one
+SELECT * FROM email_verification_tokens
+WHERE token_hash = $1;
+
+-- name: DeleteEmailVerificationToken :exec
+DELETE FROM email_verification_tokens
+WHERE token_hash = $1;
+
+-- name: DeleteEmailVerificationTokensForUser :exec
+DELETE FROM email_verification_tokens
+WHERE user_id = $1;
+
+-- name: MarkUserEmailVerified :exec
+UPDATE users
+SET
+    email_verified_at = NOW(),
+    updated_at = NOW()
+WHERE id = $1;
