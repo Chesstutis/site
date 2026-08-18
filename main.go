@@ -109,7 +109,11 @@ func main() {
 
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(tokenSecret))
+
 			r.Get("/me", h.GetMe)
+			r.Patch("/me", h.PatchMe)
+			r.Delete("/me", h.DeleteMe)
+			r.Put("/me/password", h.ChangePassword)
 			r.Get("/me/puzzles/stats", h.PuzzleStats)
 
 			r.Post("/analyze", h.AnalyzeGames)

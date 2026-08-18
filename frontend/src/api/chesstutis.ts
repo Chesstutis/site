@@ -46,3 +46,31 @@ export const getPuzzleStats = async (token: string): Promise<PuzzleStats> => {
     }
     return res.json() as Promise<PuzzleStats>;
 }
+
+export const updateAccount = async (token: string) => {
+    const res = await fetch("/api/me", {
+        method: "POST",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`
+        },
+    })
+    if (!res.ok) {
+        throw new Error("Failed to update account info");
+    }
+    return res.json();
+}
+
+export const deleteAccount = async (token: string) => {
+    const res = await fetch("/api/me", {
+        method: "DELETE",
+        headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${token}`,
+        },
+    })
+    if (!res.ok) {
+        throw new Error("Failed to delete account");
+    }
+    return res.json();
+}

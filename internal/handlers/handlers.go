@@ -521,3 +521,75 @@ func (h *Handler) Revoke(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusNoContent)
 }
+
+func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
+	userId, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	user, err := h.Queries.DeleteUser(r.Context(), userId)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	res := Me{
+		ID: user.ID,
+		Email: user.Email,
+		ChessComUsername: user.ChessComUsername,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+	}
+
+	data, err := json.Marshal(res)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+		
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}
+
+func (h *Handler) DeleteMe(w http.ResponseWriter, r *http.Request) {
+	userId, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+	user, err := h.Queries.DeleteUser(r.Context(), userId)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	res := Me{
+		ID: user.ID,
+		Email: user.Email,
+		ChessComUsername: user.ChessComUsername,
+		CreatedAt: user.CreatedAt,
+		UpdatedAt: user.UpdatedAt,
+	}
+
+	data, err := json.Marshal(res)
+	if err != nil {
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write(data)
+}
+
+func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
+	_, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "bad request", http.StatusBadRequest)
+		return
+	}
+
+
+}

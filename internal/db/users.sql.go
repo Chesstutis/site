@@ -11,6 +11,58 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+const changeChessComUsername = `-- name: ChangeChessComUsername :one
+UPDATE users 
+    SET chess_com_username = $1
+    WHERE id = $2
+RETURNING id, email, password_hash, chess_com_username, created_at, updated_at
+`
+
+type ChangeChessComUsernameParams struct {
+	ChessComUsername string `json:"chess_com_username"`
+	ID               int64  `json:"id"`
+}
+
+func (q *Queries) ChangeChessComUsername(ctx context.Context, arg ChangeChessComUsernameParams) (User, error) {
+	row := q.db.QueryRow(ctx, changeChessComUsername, arg.ChessComUsername, arg.ID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.ChessComUsername,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
+const changePassword = `-- name: ChangePassword :one
+UPDATE users 
+    SET password_hash = $1
+    WHERE id = $2
+RETURNING id, email, password_hash, chess_com_username, created_at, updated_at
+`
+
+type ChangePasswordParams struct {
+	PasswordHash string `json:"password_hash"`
+	ID           int64  `json:"id"`
+}
+
+func (q *Queries) ChangePassword(ctx context.Context, arg ChangePasswordParams) (User, error) {
+	row := q.db.QueryRow(ctx, changePassword, arg.PasswordHash, arg.ID)
+	var i User
+	err := row.Scan(
+		&i.ID,
+		&i.Email,
+		&i.PasswordHash,
+		&i.ChessComUsername,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+	)
+	return i, err
+}
+
 const createRefreshToken = `-- name: CreateRefreshToken :one
 INSERT into refresh_tokens (token_hash, user_id, expires_at)
 VALUES (
@@ -72,13 +124,11 @@ func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, e
 }
 
 const deleteUser = `-- name: DeleteUser :one
-
 DELETE FROM users
 WHERE id = $1
 RETURNING id, email, password_hash, chess_com_username, created_at, updated_at
 `
 
-// -- name: UpdateUser :one
 func (q *Queries) DeleteUser(ctx context.Context, id int64) (User, error) {
 	row := q.db.QueryRow(ctx, deleteUser, id)
 	var i User

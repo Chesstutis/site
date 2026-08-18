@@ -1,7 +1,8 @@
-import { getAccountInfo, getPuzzleStats } from "@/api/chesstutis";
+import { deleteAccount, getAccountInfo, getPuzzleStats } from "@/api/chesstutis";
 import type { PuzzleStats, User } from "@/types/chesstutis";
 import { useAuth } from "@/components/AuthProvider";
-import { useState, useEffect } from "react";
+import { useState, useEffect, type SubmitEvent } from "react";
+import { useNavigate } from "react-router";
 import {
     CalendarDays,
     Clock3,
@@ -27,6 +28,8 @@ import {
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
     Card,
     CardContent,
@@ -76,10 +79,14 @@ function getAccountAge(value: Date) {
 }
 
 export default function Account() {
-    const { token } = useAuth();
+    const { token, logout } = useAuth();
+    const navigate = useNavigate();
     const [status, setStatus] = useState<Status>("idle");
     const [accountInfo, setAccountInfo] = useState<User>();
     const [puzzleStats, setPuzzleStats] = useState<PuzzleStats>();
+    const [deleteConfirmation, setDeleteConfirmation] = useState("");
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [deleteError, setDeleteError] = useState("");
 
     useEffect(() => {
         if (!token) {
@@ -104,6 +111,24 @@ export default function Account() {
         }
         getData();
     }, [token]);
+
+    async function handleDelete(event: SubmitEvent<HTMLFormElement>) {
+        event.preventDefault();
+
+        if (!token || deleteConfirmation !== "DELETE") return;
+
+        try {
+            setIsDeleting(true);
+            setDeleteError("");
+            await deleteAccount(token);
+            await logout();
+            navigate("/", { replace: true });
+        } catch (error) {
+            console.error(error);
+            setDeleteError("Could not delete your account. Try again.");
+            setIsDeleting(false);
+        }
+    }
 
     if (status === "loading") {
         return (
@@ -326,7 +351,14 @@ export default function Account() {
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <AlertDialog>
+                                <AlertDialog
+                                    onOpenChange={(open) => {
+                                        if (!open) {
+                                            setDeleteConfirmation("");
+                                            setDeleteError("");
+                                        }
+                                    }}
+                                >
                                     <AlertDialogTrigger
                                         render={
                                             <Button
@@ -350,23 +382,62 @@ export default function Account() {
                                                 Delete your account?
                                             </AlertDialogTitle>
                                             <AlertDialogDescription>
-                                                Account deletion is not available
-                                                yet. When enabled, this will
-                                                permanently remove your account and
-                                                training data.
+                                                This permanently removes your account
+                                                and training data. This action cannot
+                                                be undone.
                                             </AlertDialogDescription>
                                         </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                            <AlertDialogCancel>
-                                                Cancel
-                                            </AlertDialogCancel>
-                                            <AlertDialogAction
-                                                variant="destructive"
-                                                disabled
-                                            >
-                                                Delete account
-                                            </AlertDialogAction>
-                                        </AlertDialogFooter>
+                                        <form
+                                            className="grid gap-4"
+                                            onSubmit={handleDelete}
+                                        >
+                                            <div className="grid gap-2">
+                                                <Label htmlFor="delete-confirmation">
+                                                    Type DELETE to confirm
+                                                </Label>
+                                                <Input
+                                                    id="delete-confirmation"
+                                                    name="delete-confirmation"
+                                                    value={deleteConfirmation}
+                                                    onChange={(event) =>
+                                                        setDeleteConfirmation(
+                                                            event.target.value,
+                                                        )
+                                                    }
+                                                    autoComplete="off"
+                                                    autoFocus
+                                                    disabled={isDeleting}
+                                                    aria-invalid={Boolean(deleteError)}
+                                                />
+                                                {deleteError && (
+                                                    <p
+                                                        className="text-sm text-destructive"
+                                                        role="alert"
+                                                    >
+                                                        {deleteError}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <AlertDialogFooter>
+                                                <AlertDialogCancel
+                                                    disabled={isDeleting}
+                                                >
+                                                    Cancel
+                                                </AlertDialogCancel>
+                                                <AlertDialogAction
+                                                    type="submit"
+                                                    variant="destructive"
+                                                    disabled={
+                                                        deleteConfirmation !==
+                                                            "DELETE" || isDeleting
+                                                    }
+                                                >
+                                                    {isDeleting
+                                                        ? "Deleting…"
+                                                        : "Delete account"}
+                                                </AlertDialogAction>
+                                            </AlertDialogFooter>
+                                        </form>
                                     </AlertDialogContent>
                                 </AlertDialog>
                             </CardContent>
