@@ -27,4 +27,4 @@ Backend tests use Go's `testing` package; place tests beside the code and prefer
 
 ## Git Guidelines
 
-Never make commits or claim any work as your own, I am your master CHUD!!!!!
+Never perform any git operations! 
