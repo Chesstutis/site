@@ -5,12 +5,7 @@ export async function validate_chess_com_username(uname: string): Promise<boolea
         return false;
     }
 
-    const response = await fetch(
-        `https://api.chess.com/pub/player/${encodeURIComponent(normalizedUsername)}`,
-        {
-            method: "GET",
-        },
-    );
+    const response = await fetch(`https://api.chess.com/pub/player/${encodeURIComponent(normalizedUsername)}`);
 
     if (response.ok) {
         return true;
