@@ -147,6 +147,7 @@ export default function Signup() {
                                     id="login-email"
                                     name="email"
                                     type="email"
+                                    maxLength={254}
                                     value={email}
                                     onChange={(event) =>
                                         setEmail(event.target.value)
@@ -166,6 +167,8 @@ export default function Signup() {
                                     id="login-password"
                                     name="password"
                                     type="password"
+                                    minLength={8}
+                                    maxLength={128}
                                     value={password}
                                     onChange={(event) =>
                                         setPassword(event.target.value)

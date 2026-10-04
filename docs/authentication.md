@@ -19,13 +19,19 @@ Do not conflate beta access credentials with application account credentials.
 
 Refresh tokens are random opaque values. Only their SHA-256 hashes are stored in `refresh_tokens`; responses return the raw value to the client. Refresh and revocation behavior must continue to check expiry and revocation state consistently.
 
+Refresh tokens rotate whenever they are used. Tokens in the same rotation chain share a family identifier; attempted reuse of a revoked token revokes the entire family. Password changes revoke every refresh token for the account, and account deletion invalidates them by cascading their removal.
+
 Changes to token transport, rotation, browser storage, or lifetimes are security-sensitive cross-layer changes. Review backend handlers, database queries, `AuthProvider`, frontend API calls, and logout behavior together.
 
 ## Browser Session
 
-`frontend/src/components/AuthProvider.tsx` is the central client session owner. It persists the current session in local storage, clears invalid or expired sessions, exposes authentication operations, and synchronizes storage changes across tabs.
+`frontend/src/components/AuthProvider.tsx` is the central client session owner. It currently persists the access and refresh credentials in local storage as explicit session fields, keeps them out of the user profile object, refreshes access before expiration, clears invalid sessions, and synchronizes storage changes across tabs. Local storage is a deliberate interim tradeoff: an XSS vulnerability could expose both credentials.
 
 Keep frontend endpoint paths synchronized with the routes registered in `main.go`. Authentication errors should not reveal whether an account exists or expose database, token, or password-hashing details.
+
+## Private Beta Gate
+
+The private-beta Basic authentication gate is retained for frontend documents and the signup/login bootstrap endpoints. Application API routes continue to use bearer authentication. Basic and bearer credentials both use the `Authorization` header, so they cannot be layered on the same request without changing one of the authentication mechanisms.
 
 ## Environment Secrets
 

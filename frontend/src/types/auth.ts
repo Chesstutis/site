@@ -26,15 +26,22 @@ export type AuthUser = {
 
 export type AuthResponse = AuthUser & {
     token: string;
+    refresh_token: string;
 };
 
 export type AuthSession = {
     user: AuthUser;
     token: string;
+    refresh_token: string;
 };
 
 export type StoredAuthSession = AuthSession & {
-    version: 1;
+    version: 2;
+};
+
+export type RefreshResponse = {
+    token: string;
+    refresh_token: string;
 };
 
 export type AuthContextValue = {

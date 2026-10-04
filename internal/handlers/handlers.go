@@ -13,6 +13,7 @@ import (
 	"github.com/chesstutis/site/internal/db"
 	"github.com/chesstutis/site/internal/requests"
 	"github.com/corentings/chess/v2"
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
@@ -21,16 +22,29 @@ import (
 )
 
 type Handler struct {
-	Queries    *db.Queries
-	Analyzer   *analyzer.Analyzer
-	JWT_SECRET string
+	Queries         *db.Queries
+	Analyzer        gameAnalyzer
+	JWT_SECRET      string
+	ChessComClient  httpDoer
+	ChessComBaseURL string
 }
+
+type gameAnalyzer interface {
+	AnalyzeGame(*chess.Game, chess.Color) (*analyzer.GameAnalysis, error)
+}
+
+const (
+	accessTokenLifetime  = time.Hour
+	refreshTokenLifetime = 60 * 24 * time.Hour
+)
 
 func New(dbpool *db.Queries, analyzer *analyzer.Analyzer, JWTSecret string) *Handler {
 	return &Handler{
-		Queries:    dbpool,
-		Analyzer:   analyzer,
-		JWT_SECRET: JWTSecret,
+		Queries:         dbpool,
+		Analyzer:        analyzer,
+		JWT_SECRET:      JWTSecret,
+		ChessComClient:  &http.Client{Timeout: 5 * time.Second},
+		ChessComBaseURL: defaultChessComBaseURL,
 	}
 }
 
@@ -117,23 +131,30 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	//TODO maybe should add some regex and chess.com validation
-	req.Email = strings.ToLower(strings.TrimSpace(req.Email))
+	req.Email = requests.NormalizeEmail(req.Email)
 	req.ChessComUsername = strings.TrimSpace(req.ChessComUsername)
 
-	if req.Email == "" ||
-		req.Password == "" ||
-		req.ChessComUsername == "" {
-		slog.Error(
-			"some fields missing in request",
-			"request_id", middleware.GetReqID(r.Context()),
-		)
-		http.Error(w, "all fields are required", http.StatusBadRequest)
+	if !requests.ValidEmail(req.Email) {
+		http.Error(w, "enter a valid email address", http.StatusBadRequest)
 		return
 	}
 
-	if len(req.Password) < 8 {
-		http.Error(w, "password must contain at least 8 characters", http.StatusBadRequest)
+	if !requests.ValidPassword(req.Password) {
+		http.Error(w, "password must contain between 8 and 128 characters", http.StatusBadRequest)
+		return
+	}
+
+	if !requests.ValidChessComUsername(req.ChessComUsername) {
+		http.Error(w, "enter a valid Chess.com username", http.StatusBadRequest)
+		return
+	}
+
+	switch h.validateChessComUsername(r.Context(), req.ChessComUsername) {
+	case chessComUsernameInvalid:
+		http.Error(w, "Chess.com username was not found", http.StatusBadRequest)
+		return
+	case chessComUsernameUnavailable:
+		http.Error(w, "Chess.com username verification is temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -175,7 +196,7 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := auth.MakeJWT(user.ID, h.JWT_SECRET, time.Hour*24)
+	token, err := auth.MakeJWT(user.ID, h.JWT_SECRET, accessTokenLifetime)
 	if err != nil {
 		slog.Error(
 			"error creating token",
@@ -199,7 +220,7 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 
 	tokenHash := auth.HashRefreshToken(rawToken)
 
-	expiresAt := time.Now().UTC().Add(time.Hour * 24 * 60)
+	expiresAt := time.Now().UTC().Add(refreshTokenLifetime)
 	_, err = h.Queries.CreateRefreshToken(r.Context(), db.CreateRefreshTokenParams{
 		TokenHash: tokenHash,
 		UserID:    user.ID,
@@ -258,14 +279,27 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "error parsing request", http.StatusBadRequest)
 		return
 	}
+
+	loginInfo.Email = requests.NormalizeEmail(loginInfo.Email)
+	if !requests.ValidEmail(loginInfo.Email) || !requests.ValidPassword(loginInfo.Password) {
+		http.Error(w, "invalid email or password", http.StatusUnauthorized)
+		return
+	}
+
 	userInfo, err := h.Queries.GetUserByEmail(r.Context(), loginInfo.Email)
 	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			// Perform comparable password work so missing accounts are less distinguishable.
+			_, _ = auth.HashPassword(loginInfo.Password)
+			http.Error(w, "invalid email or password", http.StatusUnauthorized)
+			return
+		}
 		slog.Error(
 			"error fetching from database",
 			"request_id", middleware.GetReqID(r.Context()),
 			"err", err,
 		)
-		http.Error(w, "error logging in", http.StatusBadRequest)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 
@@ -290,7 +324,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	jwt, err := auth.MakeJWT(userInfo.ID, h.JWT_SECRET, time.Hour)
+	jwt, err := auth.MakeJWT(userInfo.ID, h.JWT_SECRET, accessTokenLifetime)
 	if err != nil {
 		slog.Error(
 			"error generating JWT",
@@ -314,7 +348,7 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 
 	tokenHash := auth.HashRefreshToken(rawToken)
 
-	expiresAt := time.Now().UTC().Add(time.Hour * 24 * 60)
+	expiresAt := time.Now().UTC().Add(refreshTokenLifetime)
 	_, err = h.Queries.CreateRefreshToken(r.Context(), db.CreateRefreshTokenParams{
 		TokenHash: tokenHash,
 		UserID:    userInfo.ID,
@@ -461,23 +495,37 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	now := time.Now().UTC()
 
 	if tokInfo.RevokedAt.Valid {
+		if _, revokeErr := h.Queries.RevokeRefreshTokenFamily(r.Context(), tokHash); revokeErr != nil {
+			slog.Error(
+				"error revoking replayed refresh token family",
+				"request_id", middleware.GetReqID(r.Context()),
+				"err", revokeErr,
+			)
+		}
+		slog.Warn(
+			"refresh token reuse detected",
+			"request_id", middleware.GetReqID(r.Context()),
+			"user_id", tokInfo.UserID,
+		)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	if !now.Before(tokInfo.ExpiresAt.Time) {
+		_, _ = h.Queries.RevokeRefreshToken(r.Context(), tokHash)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
 
 	type RefreshResponse struct {
-		AccessToken string `json:"token"`
+		AccessToken  string `json:"token"`
+		RefreshToken string `json:"refresh_token"`
 	}
 
 	accessToken, err := auth.MakeJWT(
 		tokInfo.UserID,
 		h.JWT_SECRET,
-		time.Hour,
+		accessTokenLifetime,
 	)
 	if err != nil {
 		slog.Error(
@@ -489,9 +537,45 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	rawRefreshToken, err := auth.MakeRefreshToken()
+	if err != nil {
+		slog.Error(
+			"error generating refresh token",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	_, err = h.Queries.RotateRefreshToken(r.Context(), db.RotateRefreshTokenParams{
+		CurrentTokenHash: tokHash,
+		NewTokenHash:     auth.HashRefreshToken(rawRefreshToken),
+		NewExpiresAt: pgtype.Timestamptz{
+			Time:  now.Add(refreshTokenLifetime),
+			Valid: true,
+		},
+	})
+	if errors.Is(err, pgx.ErrNoRows) {
+		// Another use won the rotation race; treat this request as replay.
+		_, _ = h.Queries.RevokeRefreshTokenFamily(r.Context(), tokHash)
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if err != nil {
+		slog.Error(
+			"error rotating refresh token",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
 	render.Status(r, http.StatusOK)
 	render.JSON(w, r, RefreshResponse{
-		AccessToken: accessToken,
+		AccessToken:  accessToken,
+		RefreshToken: rawRefreshToken,
 	})
 }
 
@@ -539,8 +623,17 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 	}
 
 	req.ChessComUsername = strings.TrimSpace(req.ChessComUsername)
-	if req.ChessComUsername == "" {
-		http.Error(w, "chess.com username is required", http.StatusBadRequest)
+	if !requests.ValidChessComUsername(req.ChessComUsername) {
+		http.Error(w, "enter a valid Chess.com username", http.StatusBadRequest)
+		return
+	}
+
+	switch h.validateChessComUsername(r.Context(), req.ChessComUsername) {
+	case chessComUsernameInvalid:
+		http.Error(w, "Chess.com username was not found", http.StatusBadRequest)
+		return
+	case chessComUsernameUnavailable:
+		http.Error(w, "Chess.com username verification is temporarily unavailable", http.StatusServiceUnavailable)
 		return
 	}
 
@@ -623,13 +716,13 @@ func (h *Handler) ChangePassword(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.CurrentPassword == "" {
-		http.Error(w, "current password is required", http.StatusBadRequest)
+	if !requests.ValidPassword(req.CurrentPassword) {
+		http.Error(w, "current password is invalid", http.StatusBadRequest)
 		return
 	}
 
-	if len(req.NewPassword) < 8 {
-		http.Error(w, "new password must contain at least 8 characters", http.StatusBadRequest)
+	if !requests.ValidPassword(req.NewPassword) {
+		http.Error(w, "new password must contain between 8 and 128 characters", http.StatusBadRequest)
 		return
 	}
 

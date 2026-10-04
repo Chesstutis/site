@@ -36,6 +36,7 @@ type RefreshToken struct {
 	UpdatedAt pgtype.Timestamptz `json:"updated_at"`
 	ExpiresAt pgtype.Timestamptz `json:"expires_at"`
 	RevokedAt pgtype.Timestamptz `json:"revoked_at"`
+	FamilyID  pgtype.UUID        `json:"family_id"`
 }
 
 type User struct {

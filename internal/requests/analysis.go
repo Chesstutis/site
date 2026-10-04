@@ -29,7 +29,6 @@ func ParseAnalysisRequest(r io.Reader) (*GamesList, error) {
 	decoder := json.NewDecoder(r)
 	// decoder.DisallowUnknownFields()
 
-
 	if err := decoder.Decode(&req); err != nil {
 		return nil, err
 	}

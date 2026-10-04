@@ -177,6 +177,7 @@ export default function Signup() {
                                     id="signup-email"
                                     name="email"
                                     type="email"
+                                    maxLength={254}
                                     value={email}
                                     onChange={(event) =>
                                         setEmail(event.target.value)
@@ -196,6 +197,9 @@ export default function Signup() {
                                     id="chess-username"
                                     name="chess_com_username"
                                     type="text"
+                                    minLength={3}
+                                    maxLength={100}
+                                    pattern="[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?"
                                     value={chessUsername}
                                     onChange={(event) => {
                                         setChessUsername(event.target.value)
@@ -244,6 +248,7 @@ export default function Signup() {
                                     }
                                     autoComplete="new-password"
                                     minLength={8}
+                                    maxLength={128}
                                     aria-describedby="signup-password-description"
                                     disabled={isSubmitting}
                                     required

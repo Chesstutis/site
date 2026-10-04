@@ -28,6 +28,23 @@ type accountStore struct {
 	deleteQueryWasExecuted bool
 }
 
+type accountHTTPDoer func(*http.Request) (*http.Response, error)
+
+func (do accountHTTPDoer) Do(request *http.Request) (*http.Response, error) {
+	return do(request)
+}
+
+func newAccountHandler(store *accountStore) *Handler {
+	handler := New(db.New(store), nil, testJWTSecret)
+	handler.ChessComClient = accountHTTPDoer(func(*http.Request) (*http.Response, error) {
+		return &http.Response{
+			StatusCode: http.StatusOK,
+			Body:       http.NoBody,
+		}, nil
+	})
+	return handler
+}
+
 func (s *accountStore) Exec(context.Context, string, ...interface{}) (pgconn.CommandTag, error) {
 	return pgconn.CommandTag{}, nil
 }
@@ -125,10 +142,20 @@ func performAccountRequest(t *testing.T, store *accountStore, handler http.Handl
 }
 
 func TestChangePassword(t *testing.T) {
+	t.Run("rejects missing user context", func(t *testing.T) {
+		store := newAccountStore(t)
+		request := httptest.NewRequest(http.MethodPut, "/api/me/password", strings.NewReader(`{"current_password":"current-password","new_password":"new-password"}`))
+		response := httptest.NewRecorder()
+		newAccountHandler(store).ChangePassword(response, request)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+		}
+	})
+
 	t.Run("changes password when current password is correct", func(t *testing.T) {
 		store := newAccountStore(t)
 		oldUpdatedAt := store.user.UpdatedAt.Time
-		handler := New(db.New(store), nil, testJWTSecret)
+		handler := newAccountHandler(store)
 
 		response := performAccountRequest(t, store, handler.ChangePassword, `{"current_password":"current-password","new_password":"new-password"}`, true)
 
@@ -173,10 +200,25 @@ func TestChangePassword(t *testing.T) {
 			wantStatus:    http.StatusBadRequest,
 		},
 		{
+			name:          "rejects unknown fields",
+			body:          `{"current_password":"current-password","new_password":"new-password","admin":true}`,
+			authenticated: true,
+			wantStatus:    http.StatusBadRequest,
+		},
+		{
 			name:          "requires authentication",
 			body:          `{"current_password":"current-password","new_password":"new-password"}`,
 			authenticated: false,
 			wantStatus:    http.StatusUnauthorized,
+		},
+		{
+			name:          "handles user lookup failure",
+			body:          `{"current_password":"current-password","new_password":"new-password"}`,
+			authenticated: true,
+			configure: func(store *accountStore) {
+				store.getUserErr = errors.New("database unavailable")
+			},
+			wantStatus: http.StatusInternalServerError,
 		},
 		{
 			name:          "handles persistence failure",
@@ -204,7 +246,7 @@ func TestChangePassword(t *testing.T) {
 			if test.configure != nil {
 				test.configure(store)
 			}
-			handler := New(db.New(store), nil, testJWTSecret)
+			handler := newAccountHandler(store)
 
 			response := performAccountRequest(t, store, handler.ChangePassword, test.body, test.authenticated)
 
@@ -219,10 +261,20 @@ func TestChangePassword(t *testing.T) {
 }
 
 func TestPatchMe(t *testing.T) {
+	t.Run("rejects missing user context", func(t *testing.T) {
+		store := newAccountStore(t)
+		request := httptest.NewRequest(http.MethodPatch, "/api/me", strings.NewReader(`{"chess_com_username":"new-player"}`))
+		response := httptest.NewRecorder()
+		newAccountHandler(store).PatchMe(response, request)
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+		}
+	})
+
 	t.Run("trims and changes Chess.com username", func(t *testing.T) {
 		store := newAccountStore(t)
 		oldUpdatedAt := store.user.UpdatedAt.Time
-		handler := New(db.New(store), nil, testJWTSecret)
+		handler := newAccountHandler(store)
 
 		response := performAccountRequest(t, store, handler.PatchMe, `{"chess_com_username":"  new-player  "}`, true)
 
@@ -245,6 +297,7 @@ func TestPatchMe(t *testing.T) {
 		body          string
 		authenticated bool
 		configure     func(*accountStore)
+		configureHTTP func(*Handler)
 		wantStatus    int
 	}{
 		{
@@ -258,6 +311,34 @@ func TestPatchMe(t *testing.T) {
 			body:          `{"chess_com_username":`,
 			authenticated: true,
 			wantStatus:    http.StatusBadRequest,
+		},
+		{
+			name:          "rejects unknown fields",
+			body:          `{"chess_com_username":"new-player","admin":true}`,
+			authenticated: true,
+			wantStatus:    http.StatusBadRequest,
+		},
+		{
+			name:          "rejects missing Chess.com account",
+			body:          `{"chess_com_username":"new-player"}`,
+			authenticated: true,
+			configureHTTP: func(handler *Handler) {
+				handler.ChessComClient = accountHTTPDoer(func(*http.Request) (*http.Response, error) {
+					return &http.Response{StatusCode: http.StatusNotFound, Body: http.NoBody}, nil
+				})
+			},
+			wantStatus: http.StatusBadRequest,
+		},
+		{
+			name:          "handles Chess.com outage",
+			body:          `{"chess_com_username":"new-player"}`,
+			authenticated: true,
+			configureHTTP: func(handler *Handler) {
+				handler.ChessComClient = accountHTTPDoer(func(*http.Request) (*http.Response, error) {
+					return nil, errors.New("network unavailable")
+				})
+			},
+			wantStatus: http.StatusServiceUnavailable,
 		},
 		{
 			name:          "requires authentication",
@@ -282,7 +363,10 @@ func TestPatchMe(t *testing.T) {
 			if test.configure != nil {
 				test.configure(store)
 			}
-			handler := New(db.New(store), nil, testJWTSecret)
+			handler := newAccountHandler(store)
+			if test.configureHTTP != nil {
+				test.configureHTTP(handler)
+			}
 
 			response := performAccountRequest(t, store, handler.PatchMe, test.body, test.authenticated)
 

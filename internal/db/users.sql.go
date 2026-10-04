@@ -39,11 +39,21 @@ func (q *Queries) ChangeChessComUsername(ctx context.Context, arg ChangeChessCom
 }
 
 const changePassword = `-- name: ChangePassword :one
-UPDATE users 
-    SET password_hash = $1,
+WITH updated_user AS (
+    UPDATE users
+    SET
+        password_hash = $1,
         updated_at = NOW()
     WHERE id = $2
-RETURNING id, email, password_hash, chess_com_username, created_at, updated_at
+    RETURNING id, email, password_hash, chess_com_username, created_at, updated_at
+), revoked_tokens AS (
+    UPDATE refresh_tokens
+    SET
+        revoked_at = COALESCE(revoked_at, NOW()),
+        updated_at = NOW()
+    WHERE user_id = $2
+)
+SELECT id, email, password_hash, chess_com_username, created_at, updated_at FROM updated_user
 `
 
 type ChangePasswordParams struct {
@@ -51,9 +61,18 @@ type ChangePasswordParams struct {
 	ID           int64  `json:"id"`
 }
 
-func (q *Queries) ChangePassword(ctx context.Context, arg ChangePasswordParams) (User, error) {
+type ChangePasswordRow struct {
+	ID               int64              `json:"id"`
+	Email            string             `json:"email"`
+	PasswordHash     string             `json:"password_hash"`
+	ChessComUsername string             `json:"chess_com_username"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) ChangePassword(ctx context.Context, arg ChangePasswordParams) (ChangePasswordRow, error) {
 	row := q.db.QueryRow(ctx, changePassword, arg.PasswordHash, arg.ID)
-	var i User
+	var i ChangePasswordRow
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
@@ -72,7 +91,7 @@ VALUES (
     $2,
     $3
 )
-RETURNING token_hash, user_id, created_at, updated_at, expires_at, revoked_at
+RETURNING token_hash, user_id, created_at, updated_at, expires_at, revoked_at, family_id
 `
 
 type CreateRefreshTokenParams struct {
@@ -91,6 +110,7 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 		&i.UpdatedAt,
 		&i.ExpiresAt,
 		&i.RevokedAt,
+		&i.FamilyID,
 	)
 	return i, err
 }
@@ -146,7 +166,7 @@ func (q *Queries) DeleteUser(ctx context.Context, id int64) (User, error) {
 }
 
 const getRefreshToken = `-- name: GetRefreshToken :one
-SELECT token_hash, user_id, created_at, updated_at, expires_at, revoked_at FROM refresh_tokens
+SELECT token_hash, user_id, created_at, updated_at, expires_at, revoked_at, family_id FROM refresh_tokens
 WHERE token_hash = $1
 `
 
@@ -160,6 +180,7 @@ func (q *Queries) GetRefreshToken(ctx context.Context, tokenHash string) (Refres
 		&i.UpdatedAt,
 		&i.ExpiresAt,
 		&i.RevokedAt,
+		&i.FamilyID,
 	)
 	return i, err
 }
@@ -217,4 +238,66 @@ func (q *Queries) RevokeRefreshToken(ctx context.Context, tokenHash string) (int
 		return 0, err
 	}
 	return result.RowsAffected(), nil
+}
+
+const revokeRefreshTokenFamily = `-- name: RevokeRefreshTokenFamily :execrows
+UPDATE refresh_tokens AS tokens
+SET
+    revoked_at = COALESCE(revoked_at, NOW()),
+    updated_at = NOW()
+WHERE tokens.family_id = (
+    SELECT candidate.family_id
+    FROM refresh_tokens AS candidate
+    WHERE candidate.token_hash = $1
+)
+`
+
+func (q *Queries) RevokeRefreshTokenFamily(ctx context.Context, tokenHash string) (int64, error) {
+	result, err := q.db.Exec(ctx, revokeRefreshTokenFamily, tokenHash)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const rotateRefreshToken = `-- name: RotateRefreshToken :one
+WITH current_token AS (
+    UPDATE refresh_tokens AS tokens
+    SET
+        revoked_at = NOW(),
+        updated_at = NOW()
+    WHERE tokens.token_hash = $3
+      AND tokens.revoked_at IS NULL
+      AND tokens.expires_at > NOW()
+    RETURNING tokens.user_id, tokens.family_id
+)
+INSERT INTO refresh_tokens (token_hash, user_id, expires_at, family_id)
+SELECT
+    $1,
+    user_id,
+    $2,
+    family_id
+FROM current_token
+RETURNING token_hash, user_id, created_at, updated_at, expires_at, revoked_at, family_id
+`
+
+type RotateRefreshTokenParams struct {
+	NewTokenHash     string             `json:"new_token_hash"`
+	NewExpiresAt     pgtype.Timestamptz `json:"new_expires_at"`
+	CurrentTokenHash string             `json:"current_token_hash"`
+}
+
+func (q *Queries) RotateRefreshToken(ctx context.Context, arg RotateRefreshTokenParams) (RefreshToken, error) {
+	row := q.db.QueryRow(ctx, rotateRefreshToken, arg.NewTokenHash, arg.NewExpiresAt, arg.CurrentTokenHash)
+	var i RefreshToken
+	err := row.Scan(
+		&i.TokenHash,
+		&i.UserID,
+		&i.CreatedAt,
+		&i.UpdatedAt,
+		&i.ExpiresAt,
+		&i.RevokedAt,
+		&i.FamilyID,
+	)
+	return i, err
 }

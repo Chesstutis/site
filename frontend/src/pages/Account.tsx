@@ -165,8 +165,8 @@ export default function Account() {
         setPasswordError("");
         setSuccessMessage("");
 
-        if (newPassword.length < 8) {
-            setPasswordError("Your new password must contain at least 8 characters.");
+        if (newPassword.length < 8 || newPassword.length > 128) {
+            setPasswordError("Your new password must contain between 8 and 128 characters.");
             return;
         }
 
@@ -180,7 +180,8 @@ export default function Account() {
             await changePassword(token, currentPassword, newPassword);
             setPasswordDialogOpen(false);
             resetPasswordForm();
-            setSuccessMessage("Password changed.");
+            await logout();
+            navigate("/login", { replace: true });
         } catch (error) {
             setPasswordError(
                 error instanceof Error
@@ -414,6 +415,7 @@ export default function Account() {
                                                     id="current-password"
                                                     name="current_password"
                                                     type="password"
+                                                    maxLength={128}
                                                     value={currentPassword}
                                                     onChange={(event) =>
                                                         setCurrentPassword(
@@ -441,6 +443,7 @@ export default function Account() {
                                                     }
                                                     autoComplete="new-password"
                                                     minLength={8}
+                                                    maxLength={128}
                                                     required
                                                     disabled={isChangingPassword}
                                                     aria-describedby="new-password-description"
@@ -461,6 +464,8 @@ export default function Account() {
                                                     id="confirm-password"
                                                     name="confirm_password"
                                                     type="password"
+                                                    minLength={8}
+                                                    maxLength={128}
                                                     value={confirmPassword}
                                                     onChange={(event) =>
                                                         setConfirmPassword(
@@ -468,7 +473,6 @@ export default function Account() {
                                                         )
                                                     }
                                                     autoComplete="new-password"
-                                                    minLength={8}
                                                     required
                                                     disabled={isChangingPassword}
                                                     aria-invalid={Boolean(passwordError)}
@@ -556,6 +560,9 @@ export default function Account() {
                                                     id="chess-com-username"
                                                     name="chess_com_username"
                                                     type="text"
+                                                    minLength={3}
+                                                    maxLength={100}
+                                                    pattern="[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?"
                                                     value={chessComUsername}
                                                     onChange={(event) =>
                                                         setChessComUsername(

@@ -101,28 +101,30 @@ Resend provides an official [Go integration](https://resend.com/go) and supports
 
 ### 6. Existing authentication issues to finish
 
-- [ ] Reconcile the frontend `/api/auth/logout` request with the backend `/api/auth/revoke` route.
-- [ ] Send the refresh token—not the access token—when revoking a session.
-- [ ] Add `refresh_token` to the frontend response/session model explicitly.
-- [ ] Prevent the current response spread from accidentally storing `refresh_token` inside the user object.
-- [ ] Implement frontend access-token refresh before expiration.
-- [ ] Rotate refresh tokens on use and detect attempted reuse.
+- [x] Reconcile the frontend `/api/auth/logout` request with the backend `/api/auth/revoke` route.
+- [x] Send the refresh token—not the access token—when revoking a session.
+- [x] Add `refresh_token` to the frontend response/session model explicitly.
+- [x] Prevent the current response spread from accidentally storing `refresh_token` inside the user object.
+- [x] Implement frontend access-token refresh before expiration.
+- [x] Rotate refresh tokens on use and detect attempted reuse.
 - [ ] Prefer an `HttpOnly`, `Secure`, `SameSite` cookie for refresh tokens instead of JavaScript-accessible local storage.
 - [ ] If cookies are adopted, add CSRF protection to state-changing requests.
-- [ ] Standardize access-token duration; signup currently issues a longer-lived token than login.
-- [ ] Revoke all refresh tokens when an account is deleted.
-- [ ] Revoke or rotate sessions after security-sensitive account changes.
-- [ ] Normalize login email the same way signup email is normalized.
-- [ ] Validate email format and maximum length on the server.
-- [ ] Add reasonable password maximum length in addition to the current minimum.
-- [ ] Use consistent generic login errors to reduce email enumeration.
+- [x] Standardize access-token duration; signup currently issues a longer-lived token than login.
+- [x] Revoke all refresh tokens when an account is deleted.
+- [x] Revoke or rotate sessions after security-sensitive account changes.
+- [x] Normalize login email the same way signup email is normalized.
+- [x] Validate email format and maximum length on the server.
+- [x] Add reasonable password maximum length in addition to the current minimum.
+- [x] Use consistent generic login errors to reduce email enumeration.
 - [ ] Add rate limiting for signup, login, verification, refresh, password reset, and account changes.
-- [ ] Add frontend route guards for dashboard, solve, and account pages.
-- [ ] Add redirects that prevent authenticated users from returning to login/signup.
-- [ ] Add `PATCH` to the CORS allowed methods for the existing profile endpoint.
-- [ ] Decide whether the private-beta Basic Auth gate is being retained, removed, or applied consistently before release.
-- [ ] Move Chess.com username validation to the backend; frontend validation alone can be bypassed.
-- [ ] Define behavior when Chess.com is unavailable instead of making signup permanently depend on a successful third-party request.
+- [x] Add frontend route guards for dashboard, solve, and account pages.
+- [x] Add redirects that prevent authenticated users from returning to login/signup.
+- [x] Add `PATCH` to the CORS allowed methods for the existing profile endpoint.
+- [x] Decide whether the private-beta Basic Auth gate is being retained, removed, or applied consistently before release.
+- [x] Validate Chess.com usernames on both the frontend and backend.
+- [x] Define behavior when Chess.com is unavailable instead of making signup permanently depend on a successful third-party request.
+
+Implementation notes: access and refresh tokens intentionally remain in local storage for now, so the cookie and CSRF items remain open. Existing signup, login, refresh/revoke, and account-change endpoints are rate-limited; the combined rate-limit item remains open until verification and password-reset endpoints exist and can also be covered. Chess.com verification fails closed with a retryable `503 Service Unavailable` response when the upstream service cannot be reached.
 
 ### 7. Account management
 
