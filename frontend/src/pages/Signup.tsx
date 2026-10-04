@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from "react";
+import { useState, type SubmitEvent } from "react";
 import { Link, useNavigate } from "react-router";
 import { useAuth } from "@/components/AuthProvider"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -14,6 +14,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
+import { validate_chess_com_username } from "@/lib/validation";
 import { CircleAlert } from "lucide-react";
 
 export default function Signup() {
@@ -24,19 +25,44 @@ export default function Signup() {
     const [password, setPassword] = useState("");
     const [chessUsername, setChessUsername] = useState("");
     const [error, setError] = useState("");
+    const [usernameError, setUsernameError] = useState("");
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [isVerifyingUsername, setIsVerifyingUsername] = useState(false);
 
-    async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    async function handleSubmit(event: SubmitEvent<HTMLFormElement>) {
         event.preventDefault();
         setError("");
+        setUsernameError("");
         setIsSubmitting(true);
 
+        const normalizedUsername = chessUsername.trim();
+
         try {
+            setIsVerifyingUsername(true);
+
+            let usernameExists: boolean;
+            try {
+                usernameExists =
+                    await validate_chess_com_username(normalizedUsername);
+            } catch {
+                setUsernameError(
+                    "Could not verify this Chess.com username. Try again.",
+                );
+                return;
+            } finally {
+                setIsVerifyingUsername(false);
+            }
+
+            if (!usernameExists) {
+                setUsernameError("We could not find that Chess.com username.");
+                return;
+            }
+
             await signup({
                 email: email.trim().toLowerCase(),
                 password,
-                chess_com_username: chessUsername.trim(),
-            })
+                chess_com_username: normalizedUsername,
+            });
 
             navigate("/dashboard");
         } catch (error) {
@@ -151,6 +177,7 @@ export default function Signup() {
                                     id="signup-email"
                                     name="email"
                                     type="email"
+                                    maxLength={254}
                                     value={email}
                                     onChange={(event) =>
                                         setEmail(event.target.value)
@@ -170,13 +197,22 @@ export default function Signup() {
                                     id="chess-username"
                                     name="chess_com_username"
                                     type="text"
+                                    minLength={3}
+                                    maxLength={100}
+                                    pattern="[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?"
                                     value={chessUsername}
-                                    onChange={(event) =>
+                                    onChange={(event) => {
                                         setChessUsername(event.target.value)
-                                    }
+                                        setUsernameError("");
+                                    }}
                                     placeholder="your_username"
                                     autoComplete="username"
-                                    aria-describedby="chess-username-description"
+                                    aria-describedby={
+                                        usernameError
+                                            ? "chess-username-description chess-username-error"
+                                            : "chess-username-description"
+                                    }
+                                    aria-invalid={Boolean(usernameError)}
                                     disabled={isSubmitting}
                                     required
                                 />
@@ -187,6 +223,15 @@ export default function Signup() {
                                     We use this to find the games that become
                                     your training positions.
                                 </p>
+                                {usernameError && (
+                                    <p
+                                        id="chess-username-error"
+                                        className="text-sm text-destructive"
+                                        role="alert"
+                                    >
+                                        {usernameError}
+                                    </p>
+                                )}
                             </div>
 
                             <div className="flex flex-col gap-2">
@@ -203,6 +248,7 @@ export default function Signup() {
                                     }
                                     autoComplete="new-password"
                                     minLength={8}
+                                    maxLength={128}
                                     aria-describedby="signup-password-description"
                                     disabled={isSubmitting}
                                     required
@@ -221,9 +267,11 @@ export default function Signup() {
                                 className="w-full"
                                 disabled={isSubmitting}
                             >
-                                {isSubmitting
-                                    ? "Creating account…"
-                                    : "Create account"}
+                                {isVerifyingUsername
+                                    ? "Verifying username…"
+                                    : isSubmitting
+                                      ? "Creating account…"
+                                      : "Create account"}
                             </Button>
                         </form>
                     </CardContent>
@@ -240,5 +288,5 @@ export default function Signup() {
                 </Card>
             </section>
         </div>
-    )
+    );
 }

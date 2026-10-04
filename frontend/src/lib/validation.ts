@@ -1,16 +1,16 @@
 export async function validate_chess_com_username(uname: string): Promise<boolean> {
     const normalizedUsername = uname.trim();
 
-    if (!normalizedUsername) {
+    const hasValidFormat =
+        /^[A-Za-z0-9][A-Za-z0-9_-]{1,98}[A-Za-z0-9]$/.test(
+            normalizedUsername,
+        ) && !/^\d+$/.test(normalizedUsername);
+
+    if (!hasValidFormat) {
         return false;
     }
 
-    const response = await fetch(
-        `https://api.chess.com/pub/player/${encodeURIComponent(normalizedUsername)}`,
-        {
-            method: "GET",
-        },
-    );
+    const response = await fetch(`https://api.chess.com/pub/player/${encodeURIComponent(normalizedUsername)}`);
 
     if (response.ok) {
         return true;

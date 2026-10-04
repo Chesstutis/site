@@ -1,11 +1,11 @@
-package auth 
+package auth
 
 import (
-	"net/http"
 	"context"
+	"net/http"
 )
 
-type contextKey int 
+type contextKey int
 
 const userIDKey contextKey = iota
 

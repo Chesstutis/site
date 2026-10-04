@@ -1,9 +1,19 @@
-import { getAccountInfo, getPuzzleStats } from "@/api/chesstutis";
-import type { PuzzleStats, User } from "@/types/chesstutis";
+import {
+    changePassword,
+    deleteAccount,
+    getAccountInfo,
+    getPuzzleStats,
+    updateChessComUsername,
+} from "@/api/chesstutis";
+import type { PuzzleStats } from "@/types/chesstutis";
+import type { AuthUser } from "@/types/auth";
 import { useAuth } from "@/components/AuthProvider";
-import { useState, useEffect } from "react";
+import { validate_chess_com_username } from "@/lib/validation";
+import { useState, useEffect, type SubmitEvent } from "react";
+import { useNavigate } from "react-router";
 import {
     CalendarDays,
+    CircleCheck,
     Clock3,
     Hash,
     KeyRound,
@@ -27,6 +37,8 @@ import {
     AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
     Card,
     CardContent,
@@ -38,7 +50,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 
 type Status = "idle" | "error" | "loading";
 
-function formatDate(value: Date) {
+function formatDate(value: string) {
     const date = new Date(value);
 
     if (Number.isNaN(date.getTime())) return "Unknown";
@@ -49,7 +61,7 @@ function formatDate(value: Date) {
     }).format(date);
 }
 
-function getAccountAge(value: Date) {
+function getAccountAge(value: string) {
     const createdAt = new Date(value);
 
     if (Number.isNaN(createdAt.getTime())) return "Unknown";
@@ -76,10 +88,25 @@ function getAccountAge(value: Date) {
 }
 
 export default function Account() {
-    const { token } = useAuth();
+    const { token, logout, updateUser } = useAuth();
+    const navigate = useNavigate();
     const [status, setStatus] = useState<Status>("idle");
-    const [accountInfo, setAccountInfo] = useState<User>();
+    const [accountInfo, setAccountInfo] = useState<AuthUser>();
     const [puzzleStats, setPuzzleStats] = useState<PuzzleStats>();
+    const [deleteConfirmation, setDeleteConfirmation] = useState("");
+    const [isDeleting, setIsDeleting] = useState(false);
+    const [deleteError, setDeleteError] = useState("");
+    const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+    const [currentPassword, setCurrentPassword] = useState("");
+    const [newPassword, setNewPassword] = useState("");
+    const [confirmPassword, setConfirmPassword] = useState("");
+    const [passwordError, setPasswordError] = useState("");
+    const [isChangingPassword, setIsChangingPassword] = useState(false);
+    const [usernameDialogOpen, setUsernameDialogOpen] = useState(false);
+    const [chessComUsername, setChessComUsername] = useState("");
+    const [usernameError, setUsernameError] = useState("");
+    const [isChangingUsername, setIsChangingUsername] = useState(false);
+    const [successMessage, setSuccessMessage] = useState("");
 
     useEffect(() => {
         if (!token) {
@@ -104,6 +131,111 @@ export default function Account() {
         }
         getData();
     }, [token]);
+
+    async function handleDelete(event: SubmitEvent<HTMLFormElement>) {
+        event.preventDefault();
+
+        if (!token || deleteConfirmation !== "DELETE") return;
+
+        try {
+            setIsDeleting(true);
+            setDeleteError("");
+            await deleteAccount(token);
+            await logout();
+            navigate("/", { replace: true });
+        } catch (error) {
+            console.error(error);
+            setDeleteError("Could not delete your account. Try again.");
+            setIsDeleting(false);
+        }
+    }
+
+    function resetPasswordForm() {
+        setCurrentPassword("");
+        setNewPassword("");
+        setConfirmPassword("");
+        setPasswordError("");
+    }
+
+    async function handlePasswordChange(event: SubmitEvent<HTMLFormElement>) {
+        event.preventDefault();
+
+        if (!token) return;
+
+        setPasswordError("");
+        setSuccessMessage("");
+
+        if (newPassword.length < 8 || newPassword.length > 128) {
+            setPasswordError("Your new password must contain between 8 and 128 characters.");
+            return;
+        }
+
+        if (newPassword !== confirmPassword) {
+            setPasswordError("The new passwords do not match.");
+            return;
+        }
+
+        try {
+            setIsChangingPassword(true);
+            await changePassword(token, currentPassword, newPassword);
+            setPasswordDialogOpen(false);
+            resetPasswordForm();
+            await logout();
+            navigate("/login", { replace: true });
+        } catch (error) {
+            setPasswordError(
+                error instanceof Error
+                    ? error.message
+                    : "Could not change your password. Try again.",
+            );
+        } finally {
+            setIsChangingPassword(false);
+        }
+    }
+
+    async function handleUsernameChange(event: SubmitEvent<HTMLFormElement>) {
+        event.preventDefault();
+
+        if (!token) return;
+
+        const normalizedUsername = chessComUsername.trim();
+        setUsernameError("");
+        setSuccessMessage("");
+
+        if (!normalizedUsername) {
+            setUsernameError("Enter a Chess.com username.");
+            return;
+        }
+
+        try {
+            setIsChangingUsername(true);
+
+            const usernameExists =
+                await validate_chess_com_username(normalizedUsername);
+            if (!usernameExists) {
+                setUsernameError("We could not find that Chess.com username.");
+                return;
+            }
+
+            const updatedUser = await updateChessComUsername(
+                token,
+                normalizedUsername,
+            );
+            setAccountInfo(updatedUser);
+            updateUser(updatedUser);
+            setUsernameDialogOpen(false);
+            setUsernameError("");
+            setSuccessMessage("Chess.com username changed.");
+        } catch (error) {
+            setUsernameError(
+                error instanceof Error
+                    ? error.message
+                    : "Could not verify that Chess.com username. Try again.",
+            );
+        } finally {
+            setIsChangingUsername(false);
+        }
+    }
 
     if (status === "loading") {
         return (
@@ -178,6 +310,14 @@ export default function Account() {
                     </p>
                 </header>
 
+                {successMessage && (
+                    <Alert className="mb-6 border-primary/30 bg-primary/5">
+                        <CircleCheck aria-hidden="true" />
+                        <AlertTitle>Account updated</AlertTitle>
+                        <AlertDescription>{successMessage}</AlertDescription>
+                    </Alert>
+                )}
+
                 <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_17rem]">
                     <div className="flex flex-col gap-6">
                         <Card>
@@ -222,7 +362,17 @@ export default function Account() {
                                 </CardDescription>
                             </CardHeader>
                             <CardContent className="grid gap-3 sm:grid-cols-2">
-                                <AlertDialog>
+                                <AlertDialog
+                                    open={passwordDialogOpen}
+                                    onOpenChange={(open) => {
+                                        setPasswordDialogOpen(open);
+                                        if (open) {
+                                            setSuccessMessage("");
+                                        } else if (!isChangingPassword) {
+                                            resetPasswordForm();
+                                        }
+                                    }}
+                                >
                                     <AlertDialogTrigger
                                         render={
                                             <Button
@@ -245,26 +395,130 @@ export default function Account() {
                                                 <KeyRound aria-hidden="true" />
                                             </AlertDialogMedia>
                                             <AlertDialogTitle>
-                                                Change your password?
+                                                Change your password
                                             </AlertDialogTitle>
                                             <AlertDialogDescription>
-                                                Password changes are not available
-                                                yet. This dialog is ready for the
-                                                future account flow.
+                                                Confirm your current password, then
+                                                choose a new one with at least 8
+                                                characters.
                                             </AlertDialogDescription>
                                         </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                            <AlertDialogCancel>
-                                                Cancel
-                                            </AlertDialogCancel>
-                                            <AlertDialogAction disabled>
-                                                Change password
-                                            </AlertDialogAction>
-                                        </AlertDialogFooter>
+                                        <form
+                                            className="grid gap-4"
+                                            onSubmit={handlePasswordChange}
+                                        >
+                                            <div className="grid gap-2">
+                                                <Label htmlFor="current-password">
+                                                    Current password
+                                                </Label>
+                                                <Input
+                                                    id="current-password"
+                                                    name="current_password"
+                                                    type="password"
+                                                    maxLength={128}
+                                                    value={currentPassword}
+                                                    onChange={(event) =>
+                                                        setCurrentPassword(
+                                                            event.target.value,
+                                                        )
+                                                    }
+                                                    autoComplete="current-password"
+                                                    autoFocus
+                                                    required
+                                                    disabled={isChangingPassword}
+                                                    aria-invalid={Boolean(passwordError)}
+                                                />
+                                            </div>
+                                            <div className="grid gap-2">
+                                                <Label htmlFor="new-password">
+                                                    New password
+                                                </Label>
+                                                <Input
+                                                    id="new-password"
+                                                    name="new_password"
+                                                    type="password"
+                                                    value={newPassword}
+                                                    onChange={(event) =>
+                                                        setNewPassword(event.target.value)
+                                                    }
+                                                    autoComplete="new-password"
+                                                    minLength={8}
+                                                    maxLength={128}
+                                                    required
+                                                    disabled={isChangingPassword}
+                                                    aria-describedby="new-password-description"
+                                                    aria-invalid={Boolean(passwordError)}
+                                                />
+                                                <p
+                                                    id="new-password-description"
+                                                    className="text-xs text-muted-foreground"
+                                                >
+                                                    Use at least 8 characters.
+                                                </p>
+                                            </div>
+                                            <div className="grid gap-2">
+                                                <Label htmlFor="confirm-password">
+                                                    Confirm new password
+                                                </Label>
+                                                <Input
+                                                    id="confirm-password"
+                                                    name="confirm_password"
+                                                    type="password"
+                                                    minLength={8}
+                                                    maxLength={128}
+                                                    value={confirmPassword}
+                                                    onChange={(event) =>
+                                                        setConfirmPassword(
+                                                            event.target.value,
+                                                        )
+                                                    }
+                                                    autoComplete="new-password"
+                                                    required
+                                                    disabled={isChangingPassword}
+                                                    aria-invalid={Boolean(passwordError)}
+                                                />
+                                            </div>
+                                            {passwordError && (
+                                                <p
+                                                    className="text-sm text-destructive"
+                                                    role="alert"
+                                                >
+                                                    {passwordError}
+                                                </p>
+                                            )}
+                                            <AlertDialogFooter>
+                                                <AlertDialogCancel
+                                                    disabled={isChangingPassword}
+                                                >
+                                                    Cancel
+                                                </AlertDialogCancel>
+                                                <Button
+                                                    type="submit"
+                                                    disabled={isChangingPassword}
+                                                >
+                                                    {isChangingPassword
+                                                        ? "Changing…"
+                                                        : "Change password"}
+                                                </Button>
+                                            </AlertDialogFooter>
+                                        </form>
                                     </AlertDialogContent>
                                 </AlertDialog>
 
-                                <AlertDialog>
+                                <AlertDialog
+                                    open={usernameDialogOpen}
+                                    onOpenChange={(open) => {
+                                        setUsernameDialogOpen(open);
+                                        if (open) {
+                                            setSuccessMessage("");
+                                            setChessComUsername(
+                                                accountInfo.chess_com_username,
+                                            );
+                                        } else if (!isChangingUsername) {
+                                            setUsernameError("");
+                                        }
+                                    }}
+                                >
                                     <AlertDialogTrigger
                                         render={
                                             <Button
@@ -287,22 +541,65 @@ export default function Account() {
                                                 <UserRoundPen aria-hidden="true" />
                                             </AlertDialogMedia>
                                             <AlertDialogTitle>
-                                                Change your Chess.com username?
+                                                Change your Chess.com username
                                             </AlertDialogTitle>
                                             <AlertDialogDescription>
-                                                Username changes are not available
-                                                yet. This dialog is ready for the
-                                                future account flow.
+                                                We will verify the account with
+                                                Chess.com before saving it.
                                             </AlertDialogDescription>
                                         </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                            <AlertDialogCancel>
-                                                Cancel
-                                            </AlertDialogCancel>
-                                            <AlertDialogAction disabled>
-                                                Change username
-                                            </AlertDialogAction>
-                                        </AlertDialogFooter>
+                                        <form
+                                            className="grid gap-4"
+                                            onSubmit={handleUsernameChange}
+                                        >
+                                            <div className="grid gap-2">
+                                                <Label htmlFor="chess-com-username">
+                                                    Chess.com username
+                                                </Label>
+                                                <Input
+                                                    id="chess-com-username"
+                                                    name="chess_com_username"
+                                                    type="text"
+                                                    minLength={3}
+                                                    maxLength={100}
+                                                    pattern="[A-Za-z0-9](?:[A-Za-z0-9_-]*[A-Za-z0-9])?"
+                                                    value={chessComUsername}
+                                                    onChange={(event) =>
+                                                        setChessComUsername(
+                                                            event.target.value,
+                                                        )
+                                                    }
+                                                    autoComplete="username"
+                                                    autoFocus
+                                                    required
+                                                    disabled={isChangingUsername}
+                                                    aria-invalid={Boolean(usernameError)}
+                                                />
+                                                {usernameError && (
+                                                    <p
+                                                        className="text-sm text-destructive"
+                                                        role="alert"
+                                                    >
+                                                        {usernameError}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <AlertDialogFooter>
+                                                <AlertDialogCancel
+                                                    disabled={isChangingUsername}
+                                                >
+                                                    Cancel
+                                                </AlertDialogCancel>
+                                                <Button
+                                                    type="submit"
+                                                    disabled={isChangingUsername}
+                                                >
+                                                    {isChangingUsername
+                                                        ? "Verifying…"
+                                                        : "Change username"}
+                                                </Button>
+                                            </AlertDialogFooter>
+                                        </form>
                                     </AlertDialogContent>
                                 </AlertDialog>
                             </CardContent>
@@ -326,7 +623,14 @@ export default function Account() {
                                 </div>
                             </CardHeader>
                             <CardContent>
-                                <AlertDialog>
+                                <AlertDialog
+                                    onOpenChange={(open) => {
+                                        if (!open) {
+                                            setDeleteConfirmation("");
+                                            setDeleteError("");
+                                        }
+                                    }}
+                                >
                                     <AlertDialogTrigger
                                         render={
                                             <Button
@@ -350,23 +654,62 @@ export default function Account() {
                                                 Delete your account?
                                             </AlertDialogTitle>
                                             <AlertDialogDescription>
-                                                Account deletion is not available
-                                                yet. When enabled, this will
-                                                permanently remove your account and
-                                                training data.
+                                                This permanently removes your account
+                                                and training data. This action cannot
+                                                be undone.
                                             </AlertDialogDescription>
                                         </AlertDialogHeader>
-                                        <AlertDialogFooter>
-                                            <AlertDialogCancel>
-                                                Cancel
-                                            </AlertDialogCancel>
-                                            <AlertDialogAction
-                                                variant="destructive"
-                                                disabled
-                                            >
-                                                Delete account
-                                            </AlertDialogAction>
-                                        </AlertDialogFooter>
+                                        <form
+                                            className="grid gap-4"
+                                            onSubmit={handleDelete}
+                                        >
+                                            <div className="grid gap-2">
+                                                <Label htmlFor="delete-confirmation">
+                                                    Type DELETE to confirm
+                                                </Label>
+                                                <Input
+                                                    id="delete-confirmation"
+                                                    name="delete-confirmation"
+                                                    value={deleteConfirmation}
+                                                    onChange={(event) =>
+                                                        setDeleteConfirmation(
+                                                            event.target.value,
+                                                        )
+                                                    }
+                                                    autoComplete="off"
+                                                    autoFocus
+                                                    disabled={isDeleting}
+                                                    aria-invalid={Boolean(deleteError)}
+                                                />
+                                                {deleteError && (
+                                                    <p
+                                                        className="text-sm text-destructive"
+                                                        role="alert"
+                                                    >
+                                                        {deleteError}
+                                                    </p>
+                                                )}
+                                            </div>
+                                            <AlertDialogFooter>
+                                                <AlertDialogCancel
+                                                    disabled={isDeleting}
+                                                >
+                                                    Cancel
+                                                </AlertDialogCancel>
+                                                <AlertDialogAction
+                                                    type="submit"
+                                                    variant="destructive"
+                                                    disabled={
+                                                        deleteConfirmation !==
+                                                            "DELETE" || isDeleting
+                                                    }
+                                                >
+                                                    {isDeleting
+                                                        ? "Deleting…"
+                                                        : "Delete account"}
+                                                </AlertDialogAction>
+                                            </AlertDialogFooter>
+                                        </form>
                                     </AlertDialogContent>
                                 </AlertDialog>
                             </CardContent>
