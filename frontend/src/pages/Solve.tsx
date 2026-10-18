@@ -1,5 +1,7 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { ChessPuzzle, type Puzzle } from "@react-chess-tools/react-chess-puzzle";
+import { useChessGameContext } from "@react-chess-tools/react-chess-game";
+import { Check, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import {
@@ -18,6 +20,42 @@ import { Navigate } from "react-router"
 import { useAuth } from "@/components/AuthProvider"
 
 type Status = "idle" | "loading" | "ready" | "error" | "none" | "done";
+type PuzzleFeedback = "correct" | "incorrect" | null;
+
+function BoardFeedbackOverlay({ feedback }: { feedback: PuzzleFeedback }) {
+    const { game, orientation } = useChessGameContext();
+    const lastMove = game.history({ verbose: true }).at(-1);
+    if (!feedback || !lastMove) return null;
+
+    const file = lastMove.to.charCodeAt(0) - "a".charCodeAt(0);
+    const rank = Number(lastMove.to[1]);
+    const column = orientation === "w" ? file : 7 - file;
+    const row = orientation === "w" ? 8 - rank : rank - 1;
+
+    return (
+        <div className="pointer-events-none absolute inset-0 z-20 grid grid-cols-8 grid-rows-8">
+            <span
+                role="img"
+                aria-label={feedback === "correct" ? "Correct move" : "Incorrect move"}
+                className="relative flex items-center justify-center"
+                style={{ gridColumnStart: column + 1, gridRowStart: row + 1 }}
+            >
+                <span
+                    className={`puzzle-feedback-ring absolute size-14 rounded-full border-4 ${feedback === "correct" ? "border-emerald-400/45" : "border-destructive/45"}`}
+                />
+                <span
+                    className={`puzzle-feedback-pop relative flex size-10 items-center justify-center rounded-full text-white/95 ${feedback === "correct" ? "bg-emerald-600/45" : "bg-destructive/45"}`}
+                >
+                    {feedback === "correct" ? (
+                        <Check className="size-6 drop-shadow-sm" aria-hidden="true" />
+                    ) : (
+                        <X className="size-6 drop-shadow-sm" aria-hidden="true" />
+                    )}
+                </span>
+            </span>
+        </div>
+    );
+}
 
 export default function Solve() {
     const { status, user, token } = useAuth();
@@ -26,6 +64,14 @@ export default function Solve() {
     const [pageStatus, setStatus] = useState<Status>("idle");
     const [puzzlesResponse, setPuzzlesResponse] = useState<PuzzleResponse[]>([]);
     const [puzzleIndex, setPuzzleIndex] = useState(0);
+    const [feedback, setFeedback] = useState<PuzzleFeedback>(null);
+    const feedbackTimeout = useRef<number | null>(null);
+
+    useEffect(() => () => {
+        if (feedbackTimeout.current !== null) {
+            window.clearTimeout(feedbackTimeout.current);
+        }
+    }, []);
 
     useEffect(() => {
         if (!username || !token) {
@@ -68,11 +114,19 @@ export default function Solve() {
     });
 
     const handleSolve = () => {
-        if (puzzleIndex === puzzles.length - 1) {
-            setStatus("done")
-        }
-        setPuzzleIndex((prev) => prev + 1);
+        setFeedback("correct");
+        feedbackTimeout.current = window.setTimeout(() => {
+            setFeedback(null);
+            if (puzzleIndex === puzzles.length - 1) {
+                setStatus("done");
+                return;
+            }
+            setPuzzleIndex((prev) => prev + 1);
+        }, 900);
     };
+
+    const handleFail = () => setFeedback("incorrect");
+    const handleReset = () => setFeedback(null);
 
     if (pageStatus === "done") {
         return <div>You solved all ur puzzles bruh</div>
@@ -188,15 +242,19 @@ export default function Solve() {
                                 key={puzzleIndex}
                                 puzzle={currentPuzzle}
                                 onSolve={handleSolve}
+                                onFail={handleFail}
                             >
-                                <ChessPuzzle.Board
-                                    className="w-full max-w-md"
-                                    options={{
-                                        arrows: [toArrow(currentPuzzleResponse.player_move)],
-                                    }}
-                                />
+                                <div className="relative w-full max-w-md">
+                                    <ChessPuzzle.Board
+                                        className="w-full"
+                                        options={{
+                                            arrows: [toArrow(currentPuzzleResponse.player_move)],
+                                        }}
+                                    />
+                                    <BoardFeedbackOverlay feedback={feedback} />
+                                </div>
                                 <div className="mt-5 flex w-full flex-wrap justify-center gap-3">
-                                    <ChessPuzzle.Reset asChild>
+                                    <ChessPuzzle.Reset asChild onReset={handleReset}>
                                         <Button variant="outline">Restart</Button>
                                     </ChessPuzzle.Reset>
                                     <ChessPuzzle.Hint asChild>
