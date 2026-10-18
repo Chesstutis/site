@@ -9,6 +9,7 @@ import (
 	"testing"
 
 	"github.com/chesstutis/analyzer"
+	"github.com/chesstutis/site/internal/config"
 	"github.com/corentings/chess/v2"
 )
 
@@ -66,6 +67,24 @@ func TestPingHandler(t *testing.T) {
 }
 
 func TestAnalyzeGames(t *testing.T) {
+	t.Run("accepts the configured maximum number of games", func(t *testing.T) {
+		fake := &fakeGameAnalyzer{analysis: &analyzer.GameAnalysis{}}
+		games := make([]interface{}, config.MaxAnalysisGames)
+		for i := range games {
+			games[i] = analysisGame("target", "opponent", "1. e4 e5 *")
+		}
+		response := performAnalysisRequest(t, &Handler{Analyzer: fake}, map[string]interface{}{
+			"username": "target",
+			"games":    games,
+		})
+		if response.Code != http.StatusOK {
+			t.Fatalf("status = %d, want %d; body = %q", response.Code, http.StatusOK, response.Body.String())
+		}
+		if len(fake.colors) != config.MaxAnalysisGames {
+			t.Fatalf("analyzed %d games, want %d", len(fake.colors), config.MaxAnalysisGames)
+		}
+	})
+
 	t.Run("returns puzzles and detects player color case-insensitively", func(t *testing.T) {
 		position := chess.NewGame().Position()
 		uci := chess.UCINotation{}
@@ -122,6 +141,24 @@ func TestAnalyzeGames(t *testing.T) {
 		new(Handler).AnalyzeGames(response, request)
 		if response.Code != http.StatusBadRequest {
 			t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+		}
+	})
+
+	t.Run("rejects more games than the configured maximum before analysis", func(t *testing.T) {
+		fake := &fakeGameAnalyzer{}
+		games := make([]interface{}, config.MaxAnalysisGames+1)
+		for i := range games {
+			games[i] = analysisGame("target", "opponent", "1. e4 e5 *")
+		}
+		response := performAnalysisRequest(t, &Handler{Analyzer: fake}, map[string]interface{}{
+			"username": "target",
+			"games":    games,
+		})
+		if response.Code != http.StatusBadRequest {
+			t.Fatalf("status = %d, want %d", response.Code, http.StatusBadRequest)
+		}
+		if len(fake.colors) != 0 {
+			t.Fatalf("analyzer called %d times for oversized request", len(fake.colors))
 		}
 	})
 

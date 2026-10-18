@@ -11,10 +11,7 @@ import {
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { analyzeGames } from "@/api/chesstutis";
-import {
-    getArchives,
-    getGamesArchive,
-} from "../api/chessCom";
+import { getLatestGames } from "../api/chessCom";
 import { longToShortNotation } from "@/lib/chessUtils";
 import type { PuzzleResponse } from "@/types/chesstutis"
 import { Navigate } from "react-router"
@@ -42,15 +39,8 @@ export default function Solve() {
                 setPuzzleIndex(0);
                 setPuzzlesResponse([]);
 
-                const archives = await getArchives(username);
-                const latestArchiveUrl = archives.at(-1);
-                if (!latestArchiveUrl) {
-                    setStatus("error");
-                    return;
-                }
-
-                const archive = await getGamesArchive(latestArchiveUrl);
-                const puzzles = await analyzeGames(username, archive.games, token!);
+                const games = await getLatestGames(username);
+                const puzzles = await analyzeGames(username, games, token!);
 
                 setPuzzlesResponse(puzzles);
                 setStatus(puzzles.length === 0 ? "none" : "ready");

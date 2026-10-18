@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"strings"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/chesstutis/analyzer"
 	"github.com/chesstutis/site/internal/auth"
+	"github.com/chesstutis/site/internal/config"
 	"github.com/chesstutis/site/internal/db"
 	"github.com/chesstutis/site/internal/requests"
 	"github.com/corentings/chess/v2"
@@ -56,6 +58,10 @@ func (h *Handler) AnalyzeGames(w http.ResponseWriter, r *http.Request) {
 	rawGames, err := requests.ParseAnalysisRequest(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if len(rawGames.Games) > config.MaxAnalysisGames {
+		http.Error(w, fmt.Sprintf("cannot analyze more than %d games", config.MaxAnalysisGames), http.StatusBadRequest)
 		return
 	}
 
