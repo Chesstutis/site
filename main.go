@@ -159,6 +159,7 @@ func newRouter(h *handlers.Handler, distFS fs.FS, betaUsername, betaPassword, to
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(tokenSecret))
 			r.Get("/me", h.GetMe)
+			r.Get("/me/ratings", h.MyRatings)
 			r.With(accountChangeLimiter.Middleware).Patch("/me", h.PatchMe)
 			r.With(accountChangeLimiter.Middleware).Delete("/me", h.DeleteMe)
 			r.With(accountChangeLimiter.Middleware).Put("/me/password", h.ChangePassword)

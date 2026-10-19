@@ -344,13 +344,20 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch h.validateChessComUsername(r.Context(), req.ChessComUsername) {
+	usernameStatus, chessComPlayerID := h.fetchChessComPlayerID(r.Context(), req.ChessComUsername)
+	switch usernameStatus {
 	case chessComUsernameInvalid:
 		http.Error(w, "Chess.com username was not found", http.StatusBadRequest)
 		return
 	case chessComUsernameUnavailable:
 		http.Error(w, "Chess.com username verification is temporarily unavailable", http.StatusServiceUnavailable)
 		return
+	}
+
+	ratings, err := h.fetchChessComRatings(r.Context(), req.ChessComUsername)
+	if err != nil {
+		slog.Warn("failed to capture initial Chess.com ratings", "request_id", middleware.GetReqID(r.Context()), "err", err)
+		ratings = chessComRatings{}
 	}
 
 	passwordHash, err := auth.HashPassword(req.Password)
@@ -364,10 +371,15 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.Queries.CreateUser(r.Context(), db.CreateUserParams{
+	user, err := h.Queries.CreateUserWithRatingSnapshot(r.Context(), db.CreateUserWithRatingSnapshotParams{
 		Email:            req.Email,
 		PasswordHash:     passwordHash,
 		ChessComUsername: req.ChessComUsername,
+		ChessComPlayerID: chessComPlayerID,
+		BulletRating:     ratings.Bullet,
+		BlitzRating:      ratings.Blitz,
+		RapidRating:      ratings.Rapid,
+		DailyRating:      ratings.Daily,
 	})
 
 	if err != nil {

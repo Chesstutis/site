@@ -1,4 +1,4 @@
-import type { AnalyzedGamesResponse, PuzzleResponse, PuzzleStats } from "../types/chesstutis"
+import type { AnalyzedGamesResponse, ChessComRatingComparison, PuzzleResponse, PuzzleStats } from "../types/chesstutis"
 import type { ChessGame } from "../types/chessCom"
 import type { AuthUser } from "../types/auth"
 
@@ -92,6 +92,17 @@ export const getPuzzleStats = async (token: string): Promise<PuzzleStats> => {
         throw new Error("Failed to fetch puzzle stats");
     }
     return res.json() as Promise<PuzzleStats>;
+}
+
+export const getChessComRatingComparison = async (token: string, signal?: AbortSignal): Promise<ChessComRatingComparison> => {
+    const res = await fetch("/api/me/ratings", {
+        headers: { Authorization: `Bearer ${token}` },
+        signal,
+    });
+    if (!res.ok) {
+        throw new Error(await getErrorMessage(res, "Failed to fetch Chess.com ratings"));
+    }
+    return res.json() as Promise<ChessComRatingComparison>;
 }
 
 export const updateChessComUsername = async (

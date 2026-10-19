@@ -1,11 +1,33 @@
--- name: CreateUser :one
-INSERT INTO users (email, password_hash, chess_com_username)
-VALUES (
-    $1,
-    $2,
-    $3
+-- name: CreateUserWithRatingSnapshot :one
+WITH created_user AS (
+    INSERT INTO users (email, password_hash, chess_com_username)
+    VALUES ($1, $2, $3)
+    RETURNING id, email, password_hash, chess_com_username, created_at, updated_at
+), saved_rating AS (
+    INSERT INTO chess_com_rating_snapshots (
+        user_id,
+        chess_com_username,
+        chess_com_player_id,
+        bullet_rating,
+        blitz_rating,
+        rapid_rating,
+        daily_rating
+    )
+    SELECT
+        id,
+        $3,
+        sqlc.narg(chess_com_player_id)::BIGINT,
+        sqlc.narg(bullet_rating)::INTEGER,
+        sqlc.narg(blitz_rating)::INTEGER,
+        sqlc.narg(rapid_rating)::INTEGER,
+        sqlc.narg(daily_rating)::INTEGER
+    FROM created_user
+    RETURNING id
 )
-RETURNING *;
+SELECT created_user.id, created_user.email, created_user.password_hash,
+       created_user.chess_com_username, created_user.created_at, created_user.updated_at
+FROM created_user
+CROSS JOIN saved_rating;
 
 -- name: ChangeChessComUsername :one
 UPDATE users 

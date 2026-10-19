@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,6 +26,7 @@ type authHandlerStore struct {
 	createdEmail          string
 	createdPasswordHash   string
 	createdUsername       string
+	createdRatings        db.CreateUserWithRatingSnapshotParams
 	lookupEmail           string
 	refreshToken          db.RefreshToken
 }
@@ -39,10 +41,20 @@ func (s *authHandlerStore) Query(context.Context, string, ...interface{}) (pgx.R
 
 func (s *authHandlerStore) QueryRow(_ context.Context, query string, args ...interface{}) pgx.Row {
 	switch {
-	case strings.Contains(query, "-- name: CreateUser"):
+	case strings.Contains(query, "-- name: CreateUserWithRatingSnapshot"):
 		s.createdEmail = args[0].(string)
 		s.createdPasswordHash = args[1].(string)
 		s.createdUsername = args[2].(string)
+		s.createdRatings = db.CreateUserWithRatingSnapshotParams{
+			Email:            args[0].(string),
+			PasswordHash:     args[1].(string),
+			ChessComUsername: args[2].(string),
+			ChessComPlayerID: args[3].(pgtype.Int8),
+			BulletRating:     args[4].(pgtype.Int4),
+			BlitzRating:      args[5].(pgtype.Int4),
+			RapidRating:      args[6].(pgtype.Int4),
+			DailyRating:      args[7].(pgtype.Int4),
+		}
 		if s.createUserErr != nil {
 			return accountRow{err: s.createUserErr}
 		}
@@ -91,9 +103,22 @@ func newAuthHandlerStore(t *testing.T) *authHandlerStore {
 }
 
 func newAuthHandler(store *authHandlerStore, chessComStatus int) *Handler {
+	return newAuthHandlerWithStatsStatus(store, chessComStatus, http.StatusOK)
+}
+
+func newAuthHandlerWithStatsStatus(store *authHandlerStore, chessComStatus, statsStatus int) *Handler {
 	handler := New(db.New(store), nil, testJWTSecret)
-	handler.ChessComClient = accountHTTPDoer(func(*http.Request) (*http.Response, error) {
-		return &http.Response{StatusCode: chessComStatus, Body: http.NoBody}, nil
+	handler.ChessComClient = accountHTTPDoer(func(request *http.Request) (*http.Response, error) {
+		if strings.HasSuffix(request.URL.Path, "/stats") {
+			return &http.Response{
+				StatusCode: statsStatus,
+				Body:       io.NopCloser(strings.NewReader(`{"chess_bullet":{"last":{"rating":1200}},"chess_blitz":{"last":{"rating":1300}},"chess_rapid":{"last":{"rating":1400}},"chess_daily":{"last":{"rating":1500}}}`)),
+			}, nil
+		}
+		return &http.Response{
+			StatusCode: chessComStatus,
+			Body:       io.NopCloser(strings.NewReader(`{"player_id":42}`)),
+		}, nil
 	})
 	return handler
 }
@@ -121,6 +146,11 @@ func TestSignup(t *testing.T) {
 		}
 		if store.createdEmail != "player@example.com" || store.createdUsername != "player-one" {
 			t.Fatalf("created account = (%q, %q), want normalized values", store.createdEmail, store.createdUsername)
+		}
+		if store.createdRatings.ChessComPlayerID != (pgtype.Int8{Int64: 42, Valid: true}) ||
+			store.createdRatings.BulletRating.Int32 != 1200 || store.createdRatings.BlitzRating.Int32 != 1300 ||
+			store.createdRatings.RapidRating.Int32 != 1400 || store.createdRatings.DailyRating.Int32 != 1500 {
+			t.Fatalf("initial ratings were not saved with the account: %+v", store.createdRatings)
 		}
 		validPassword, err := auth.CheckPasswordHash("correct-password", store.createdPasswordHash)
 		if err != nil || !validPassword {
@@ -182,6 +212,21 @@ func TestSignup(t *testing.T) {
 			}
 		})
 	}
+
+	t.Run("allows signup when Chess.com ratings are unavailable", func(t *testing.T) {
+		store := newAuthHandlerStore(t)
+		response := performJSONRequest(newAuthHandlerWithStatsStatus(store, http.StatusOK, http.StatusServiceUnavailable).Signup, http.MethodPost, "/api/auth/signup", `{
+			"email":"player@example.com",
+			"password":"correct-password",
+			"chess_com_username":"player-one"
+		}`)
+		if response.Code != http.StatusCreated {
+			t.Fatalf("status = %d, want %d; body = %q", response.Code, http.StatusCreated, response.Body.String())
+		}
+		if store.createdRatings.BulletRating.Valid || store.createdRatings.BlitzRating.Valid || store.createdRatings.RapidRating.Valid || store.createdRatings.DailyRating.Valid {
+			t.Fatalf("ratings should be unavailable after fetch failure: %+v", store.createdRatings)
+		}
+	})
 }
 
 func TestLogin(t *testing.T) {

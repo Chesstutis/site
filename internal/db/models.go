@@ -15,13 +15,15 @@ type AnalyzedGame struct {
 }
 
 type ChessComRatingSnapshot struct {
-	ID           int64              `json:"id"`
-	UserID       int64              `json:"user_id"`
-	CapturedAt   pgtype.Timestamptz `json:"captured_at"`
-	BulletRating pgtype.Int4        `json:"bullet_rating"`
-	BlitzRating  pgtype.Int4        `json:"blitz_rating"`
-	RapidRating  pgtype.Int4        `json:"rapid_rating"`
-	DailyRating  pgtype.Int4        `json:"daily_rating"`
+	ID               int64              `json:"id"`
+	UserID           int64              `json:"user_id"`
+	CapturedAt       pgtype.Timestamptz `json:"captured_at"`
+	BulletRating     pgtype.Int4        `json:"bullet_rating"`
+	BlitzRating      pgtype.Int4        `json:"blitz_rating"`
+	RapidRating      pgtype.Int4        `json:"rapid_rating"`
+	DailyRating      pgtype.Int4        `json:"daily_rating"`
+	ChessComUsername pgtype.Text        `json:"chess_com_username"`
+	ChessComPlayerID pgtype.Int8        `json:"chess_com_player_id"`
 }
 
 type Puzzle struct {

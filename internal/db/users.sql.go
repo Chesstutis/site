@@ -115,25 +115,70 @@ func (q *Queries) CreateRefreshToken(ctx context.Context, arg CreateRefreshToken
 	return i, err
 }
 
-const createUser = `-- name: CreateUser :one
-INSERT INTO users (email, password_hash, chess_com_username)
-VALUES (
-    $1,
-    $2,
-    $3
+const createUserWithRatingSnapshot = `-- name: CreateUserWithRatingSnapshot :one
+WITH created_user AS (
+    INSERT INTO users (email, password_hash, chess_com_username)
+    VALUES ($1, $2, $3)
+    RETURNING id, email, password_hash, chess_com_username, created_at, updated_at
+), saved_rating AS (
+    INSERT INTO chess_com_rating_snapshots (
+        user_id,
+        chess_com_username,
+        chess_com_player_id,
+        bullet_rating,
+        blitz_rating,
+        rapid_rating,
+        daily_rating
+    )
+    SELECT
+        id,
+        $3,
+        $4::BIGINT,
+        $5::INTEGER,
+        $6::INTEGER,
+        $7::INTEGER,
+        $8::INTEGER
+    FROM created_user
+    RETURNING id
 )
-RETURNING id, email, password_hash, chess_com_username, created_at, updated_at
+SELECT created_user.id, created_user.email, created_user.password_hash,
+       created_user.chess_com_username, created_user.created_at, created_user.updated_at
+FROM created_user
+CROSS JOIN saved_rating
 `
 
-type CreateUserParams struct {
-	Email            string `json:"email"`
-	PasswordHash     string `json:"password_hash"`
-	ChessComUsername string `json:"chess_com_username"`
+type CreateUserWithRatingSnapshotParams struct {
+	Email            string      `json:"email"`
+	PasswordHash     string      `json:"password_hash"`
+	ChessComUsername string      `json:"chess_com_username"`
+	ChessComPlayerID pgtype.Int8 `json:"chess_com_player_id"`
+	BulletRating     pgtype.Int4 `json:"bullet_rating"`
+	BlitzRating      pgtype.Int4 `json:"blitz_rating"`
+	RapidRating      pgtype.Int4 `json:"rapid_rating"`
+	DailyRating      pgtype.Int4 `json:"daily_rating"`
 }
 
-func (q *Queries) CreateUser(ctx context.Context, arg CreateUserParams) (User, error) {
-	row := q.db.QueryRow(ctx, createUser, arg.Email, arg.PasswordHash, arg.ChessComUsername)
-	var i User
+type CreateUserWithRatingSnapshotRow struct {
+	ID               int64              `json:"id"`
+	Email            string             `json:"email"`
+	PasswordHash     string             `json:"password_hash"`
+	ChessComUsername string             `json:"chess_com_username"`
+	CreatedAt        pgtype.Timestamptz `json:"created_at"`
+	UpdatedAt        pgtype.Timestamptz `json:"updated_at"`
+}
+
+func (q *Queries) CreateUserWithRatingSnapshot(ctx context.Context, arg CreateUserWithRatingSnapshotParams) (CreateUserWithRatingSnapshotRow, error) {
+	row := q.db.QueryRow(ctx, createUserWithRatingSnapshot,
+		arg.Email,
+		arg.PasswordHash,
+		arg.ChessComUsername,
+		arg.ChessComPlayerID,
+		arg.BulletRating,
+		arg.BlitzRating,
+		arg.RapidRating,
+		arg.DailyRating,
+	)
+	var i CreateUserWithRatingSnapshotRow
 	err := row.Scan(
 		&i.ID,
 		&i.Email,
