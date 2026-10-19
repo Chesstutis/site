@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
-import { ChessPuzzle, type Puzzle } from "@react-chess-tools/react-chess-puzzle";
 import { useChessGameContext } from "@react-chess-tools/react-chess-game";
+import { ChessPuzzle, useChessPuzzleContext } from "@react-chess-tools/react-chess-puzzle";
+import type { Square } from "chess.js";
 import { Check, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
@@ -12,7 +13,7 @@ import {
     CardTitle,
 } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { analyzeGames } from "@/api/chesstutis";
+import { analyzeGames, attemptPuzzle, getAnalyzedGameUUIDs, requestPuzzleHint } from "@/api/chesstutis";
 import { getLatestGames } from "../api/chessCom";
 import { longToShortNotation } from "@/lib/chessUtils";
 import type { PuzzleResponse } from "@/types/chesstutis"
@@ -22,13 +23,12 @@ import { useAuth } from "@/components/AuthProvider"
 type Status = "idle" | "loading" | "ready" | "error" | "none" | "done";
 type PuzzleFeedback = "correct" | "incorrect" | null;
 
-function BoardFeedbackOverlay({ feedback }: { feedback: PuzzleFeedback }) {
-    const { game, orientation } = useChessGameContext();
-    const lastMove = game.history({ verbose: true }).at(-1);
-    if (!feedback || !lastMove) return null;
+function BoardFeedbackOverlay({ feedback, square }: { feedback: PuzzleFeedback; square: string | null }) {
+    const { orientation } = useChessGameContext();
+    if (!feedback || !square) return null;
 
-    const file = lastMove.to.charCodeAt(0) - "a".charCodeAt(0);
-    const rank = Number(lastMove.to[1]);
+    const file = square.charCodeAt(0) - "a".charCodeAt(0);
+    const rank = Number(square[1]);
     const column = orientation === "w" ? file : 7 - file;
     const row = orientation === "w" ? 8 - rank : rank - 1;
 
@@ -57,6 +57,149 @@ function BoardFeedbackOverlay({ feedback }: { feedback: PuzzleFeedback }) {
     );
 }
 
+function PuzzleBoard({ puzzle, token, feedback, feedbackSquare, onFeedback, onCorrect }: {
+    puzzle: PuzzleResponse;
+    token: string;
+    feedback: PuzzleFeedback;
+    feedbackSquare: string | null;
+    onFeedback: (feedback: PuzzleFeedback, square: string | null) => void;
+    onCorrect: () => void;
+}) {
+    const { game, methods } = useChessGameContext();
+    const { hint, changePuzzle, onHint } = useChessPuzzleContext();
+    const [pending, setPending] = useState(false);
+    const [hintPending, setHintPending] = useState(false);
+    const [hintError, setHintError] = useState("");
+    const [promotionMove, setPromotionMove] = useState<{ sourceSquare: string; targetSquare: string } | null>(null);
+
+    const submitMove = async ({ sourceSquare, targetSquare, promotion }: {
+        sourceSquare: string;
+        targetSquare: string;
+        promotion?: "q" | "r" | "b" | "n";
+    }) => {
+        if (pending || hintPending || feedback !== null) return false;
+        onFeedback(null, null);
+        setHintError("");
+        const legal = game.moves({ square: sourceSquare as Square, verbose: true })
+            .filter((move) => move.to === targetSquare);
+        if (!legal.length) return false;
+        if (legal.some((move) => move.promotion) && !promotion) return false;
+        const move = `${sourceSquare}${targetSquare}${promotion ?? ""}`;
+        setPending(true);
+        try {
+            const correct = await attemptPuzzle(token, puzzle.id, move);
+            // Keep the board library's square colors aligned with the server's decision.
+            changePuzzle({ fen: puzzle.fen, moves: correct ? [move] : [] });
+            if (!correct) {
+                methods.makeMove({ from: sourceSquare, to: targetSquare, promotion });
+                onFeedback("incorrect", targetSquare);
+                return false;
+            }
+            methods.makeMove({ from: sourceSquare, to: targetSquare, promotion });
+            onFeedback("correct", targetSquare);
+            onCorrect();
+            return true;
+        } catch (error) {
+            console.error(error);
+            onFeedback(null, null);
+            return false;
+        } finally {
+            setPending(false);
+        }
+    };
+
+    const showHint = async () => {
+        if (hintPending || hint === "move") return;
+        setHintPending(true);
+        setHintError("");
+        const level = hint === "piece" ? 2 : 1;
+        try {
+            const result = await requestPuzzleHint(token, puzzle.id, level);
+            const legalMove = game.moves({ square: result.from as Square, verbose: true })
+                .find((move) => level === 1 || move.to === result.to);
+            if (!legalMove) throw new Error("No legal move found for hint");
+            const hintedMove = `${result.from}${legalMove.to}${legalMove.promotion ?? ""}`;
+            changePuzzle({ fen: puzzle.fen, moves: [hintedMove] });
+            onHint();
+            if (level === 2) onHint();
+        } catch (error) {
+            console.error(error);
+            setHintError("Could not load a hint. Try again.");
+        } finally {
+            setHintPending(false);
+        }
+    };
+
+    const restart = () => {
+        setPromotionMove(null);
+        onFeedback(null, null);
+        setHintError("");
+    };
+
+    return <>
+        <div className="relative w-full max-w-md">
+            <ChessPuzzle.Board
+                className="w-full"
+                options={{
+                    allowDragging: !pending && !hintPending && feedback === null,
+                    onPieceDrop: ({ sourceSquare, targetSquare }) => {
+                        if (!sourceSquare || !targetSquare) return false;
+                        const legal = game.moves({ square: sourceSquare as Square, verbose: true })
+                            .filter((move) => move.to === targetSquare);
+                        if (legal.some((move) => move.promotion)) {
+                            setPromotionMove({ sourceSquare, targetSquare });
+                            return false;
+                        }
+                        void submitMove({ sourceSquare, targetSquare });
+                        return false;
+                    },
+                    arrows: [{
+                        startSquare: puzzle.player_move.slice(0, 2),
+                        endSquare: puzzle.player_move.slice(2, 4),
+                        color: "var(--destructive)",
+                    }],
+                }}
+            />
+            <BoardFeedbackOverlay feedback={feedback} square={feedbackSquare} />
+        </div>
+        <div className="mt-5 flex min-h-24 w-full flex-col items-center gap-2">
+            <div className="flex min-h-10 w-full items-center justify-center gap-2" aria-label={promotionMove && feedback === null ? "Choose promotion piece" : undefined}>
+                {promotionMove && feedback === null ? (["q", "r", "b", "n"] as const).map((promotion) => (
+                        <Button
+                            key={promotion}
+                            variant="secondary"
+                            disabled={pending || hintPending}
+                            onClick={() => {
+                                void submitMove({ ...promotionMove, promotion });
+                                setPromotionMove(null);
+                            }}
+                        >
+                            {promotion.toUpperCase()}
+                        </Button>
+                    )) : null}
+            </div>
+            <div className="flex min-h-10 items-center justify-center">
+                {feedback === "incorrect" ? (
+                    <ChessPuzzle.Reset asChild puzzle={{ fen: puzzle.fen, moves: [] }} showOn={["not-started", "in-progress", "failed", "solved"]} onReset={restart}>
+                        <Button variant="outline" disabled={pending}>Restart</Button>
+                    </ChessPuzzle.Reset>
+                ) : feedback === null ? (
+                    <Button variant="outline" onClick={() => void showHint()} disabled={pending || hintPending || hint === "move"}>
+                        {hint === "piece" ? "Show move" : hint === "move" ? "Move revealed" : "Hint"}
+                    </Button>
+                ) : (
+                    <Button variant="outline" disabled>Correct!</Button>
+                )}
+            </div>
+        </div>
+        {hintError && (
+            <p className="mt-3 text-center text-sm text-destructive" role="alert">
+                {hintError}
+            </p>
+        )}
+    </>;
+}
+
 export default function Solve() {
     const { status, user, token } = useAuth();
     const username = user?.chess_com_username ?? "";
@@ -65,6 +208,7 @@ export default function Solve() {
     const [puzzlesResponse, setPuzzlesResponse] = useState<PuzzleResponse[]>([]);
     const [puzzleIndex, setPuzzleIndex] = useState(0);
     const [feedback, setFeedback] = useState<PuzzleFeedback>(null);
+    const [feedbackSquare, setFeedbackSquare] = useState<string | null>(null);
     const feedbackTimeout = useRef<number | null>(null);
 
     useEffect(() => () => {
@@ -85,7 +229,8 @@ export default function Solve() {
                 setPuzzleIndex(0);
                 setPuzzlesResponse([]);
 
-                const games = await getLatestGames(username);
+                const analyzedGameUUIDs = await getAnalyzedGameUUIDs(token!);
+                const games = await getLatestGames(username, new Set(analyzedGameUUIDs.map((uuid) => uuid.toLowerCase())));
                 const puzzles = await analyzeGames(username, games, token!);
 
                 setPuzzlesResponse(puzzles);
@@ -98,26 +243,13 @@ export default function Solve() {
         loadPuzzles();
     }, [username, token]);
 
-    const puzzles: Puzzle[] = puzzlesResponse.map((p) => ({
-        fen: p.fen,
-        moves: [p.best_move],
-        makeFirstMove: false,
-    }));
-
-    const currentPuzzle = puzzles[puzzleIndex];
     const currentPuzzleResponse = puzzlesResponse[puzzleIndex];
 
-    const toArrow = (uciMove: string) => ({
-        startSquare: uciMove.slice(0, 2),
-        endSquare: uciMove.slice(2, 4),
-        color: "var(--destructive)",
-    });
-
     const handleSolve = () => {
-        setFeedback("correct");
         feedbackTimeout.current = window.setTimeout(() => {
             setFeedback(null);
-            if (puzzleIndex === puzzles.length - 1) {
+            setFeedbackSquare(null);
+            if (puzzleIndex === puzzlesResponse.length - 1) {
                 setStatus("done");
                 return;
             }
@@ -125,8 +257,10 @@ export default function Solve() {
         }, 900);
     };
 
-    const handleFail = () => setFeedback("incorrect");
-    const handleReset = () => setFeedback(null);
+    const handleFeedback = (nextFeedback: PuzzleFeedback, square: string | null) => {
+        setFeedback(nextFeedback);
+        setFeedbackSquare(square);
+    };
 
     if (pageStatus === "done") {
         return <div>You solved all ur puzzles bruh</div>
@@ -201,7 +335,7 @@ export default function Solve() {
         );
     }
 
-    if (pageStatus === "error" || !currentPuzzle || !currentPuzzleResponse) {
+    if (pageStatus === "error" || !currentPuzzleResponse) {
         return (
             <div className="flex flex-1 bg-background px-4 py-8 text-foreground">
                 <section className="mx-auto flex w-full max-w-3xl items-center justify-center">
@@ -239,30 +373,18 @@ export default function Solve() {
                     <CardContent>
                         <div className="flex flex-col items-center gap-5">
                             <ChessPuzzle.Root
-                                key={puzzleIndex}
-                                puzzle={currentPuzzle}
-                                onSolve={handleSolve}
-                                onFail={handleFail}
+                                key={currentPuzzleResponse.id}
+                                puzzle={{ fen: currentPuzzleResponse.fen, moves: [] }}
+                                solveOnCheckmate={false}
                             >
-                                <div className="relative w-full max-w-md">
-                                    <ChessPuzzle.Board
-                                        className="w-full"
-                                        options={{
-                                            arrows: [toArrow(currentPuzzleResponse.player_move)],
-                                        }}
-                                    />
-                                    <BoardFeedbackOverlay feedback={feedback} />
-                                </div>
-                                <div className="mt-5 flex w-full flex-wrap justify-center gap-3">
-                                    <ChessPuzzle.Reset asChild onReset={handleReset}>
-                                        <Button variant="outline">Restart</Button>
-                                    </ChessPuzzle.Reset>
-                                    <ChessPuzzle.Hint asChild>
-                                        <Button variant="secondary">
-                                            Get Hint
-                                        </Button>
-                                    </ChessPuzzle.Hint>
-                                </div>
+                                <PuzzleBoard
+                                    puzzle={currentPuzzleResponse}
+                                    token={token!}
+                                    feedback={feedback}
+                                    feedbackSquare={feedbackSquare}
+                                    onFeedback={handleFeedback}
+                                    onCorrect={handleSolve}
+                                />
                             </ChessPuzzle.Root>
                         </div>
                     </CardContent>

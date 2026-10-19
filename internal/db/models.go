@@ -8,6 +8,12 @@ import (
 	"github.com/jackc/pgx/v5/pgtype"
 )
 
+type AnalyzedGame struct {
+	UserID     int64              `json:"user_id"`
+	GameUuid   pgtype.UUID        `json:"game_uuid"`
+	AnalyzedAt pgtype.Timestamptz `json:"analyzed_at"`
+}
+
 type ChessComRatingSnapshot struct {
 	ID           int64              `json:"id"`
 	UserID       int64              `json:"user_id"`
@@ -19,14 +25,16 @@ type ChessComRatingSnapshot struct {
 }
 
 type Puzzle struct {
-	ID        int64              `json:"id"`
-	GameUuid  pgtype.UUID        `json:"game_uuid"`
-	UserID    int64              `json:"user_id"`
-	Puzzle    []byte             `json:"puzzle"`
-	Status    string             `json:"status"`
-	Comment   pgtype.Text        `json:"comment"`
-	CreatedAt pgtype.Timestamptz `json:"created_at"`
-	SolvedAt  pgtype.Timestamptz `json:"solved_at"`
+	ID             int64              `json:"id"`
+	GameUuid       pgtype.UUID        `json:"game_uuid"`
+	UserID         int64              `json:"user_id"`
+	Puzzle         []byte             `json:"puzzle"`
+	Status         string             `json:"status"`
+	Comment        pgtype.Text        `json:"comment"`
+	CreatedAt      pgtype.Timestamptz `json:"created_at"`
+	SolvedAt       pgtype.Timestamptz `json:"solved_at"`
+	SourceGameUuid pgtype.UUID        `json:"source_game_uuid"`
+	PuzzleIndex    pgtype.Int4        `json:"puzzle_index"`
 }
 
 type RefreshToken struct {

@@ -17,7 +17,8 @@ Keep routing and process wiring in `main.go`. Avoid moving HTTP concerns into th
 - Treat user identity from `auth.UserIDFromContext` as the authenticated subject; do not accept a caller-supplied user ID for protected account data.
 - Register protected routes inside the `auth.RequireAuth` group unless the route is intentionally public.
 - Decode bounded request shapes, reject malformed input consistently, and avoid exposing internal database or cryptographic errors to clients.
-- Log operational detail with the request ID where available while returning stable client-facing errors.
+- Log every HTTP error response with `slog`, including expected client rejections. Use `Warn` for 4xx responses and `Error` for 5xx failures; include the request ID where available, and include the underlying `err` for operational failures.
+- Never log credentials, tokens, passwords, or raw request bodies. Keep client-facing error responses stable and generic for internal failures.
 - Keep response JSON compatible with the frontend types and API functions.
 
 ## Tests and Formatting

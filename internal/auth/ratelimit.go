@@ -32,9 +32,23 @@ func NewRateLimiter(limit int, window time.Duration) *RateLimiter {
 }
 
 func (l *RateLimiter) Middleware(next http.Handler) http.Handler {
+	return l.middleware(func(r *http.Request) string { return r.RemoteAddr }, next)
+}
+
+func (l *RateLimiter) UserMiddleware(next http.Handler) http.Handler {
+	return l.middleware(func(r *http.Request) string {
+		userID, ok := UserIDFromContext(r.Context())
+		if !ok {
+			return "unauthenticated"
+		}
+		return "user:" + strconv.FormatInt(userID, 10)
+	}, next)
+}
+
+func (l *RateLimiter) middleware(keyFor func(*http.Request) string, next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		now := l.now()
-		key := r.RemoteAddr
+		key := keyFor(r)
 
 		l.mu.Lock()
 		if !now.Before(l.cleanupAt) {

@@ -7,30 +7,53 @@ package db
 
 import (
 	"context"
+
+	"github.com/jackc/pgx/v5/pgtype"
 )
 
-const addPuzzle = `-- name: AddPuzzle :one
-
-
-SELECT id, game_uuid, user_id, puzzle, status, comment, created_at, solved_at FROM puzzles 
+const getAnalyzedGameUUIDs = `-- name: GetAnalyzedGameUUIDs :many
+SELECT game_uuid
+FROM analyzed_games
 WHERE user_id = $1
+ORDER BY analyzed_at DESC, game_uuid
 `
 
-// INSERT INTO puzzles
-func (q *Queries) AddPuzzle(ctx context.Context, userID int64) (Puzzle, error) {
-	row := q.db.QueryRow(ctx, addPuzzle, userID)
-	var i Puzzle
-	err := row.Scan(
-		&i.ID,
-		&i.GameUuid,
-		&i.UserID,
-		&i.Puzzle,
-		&i.Status,
-		&i.Comment,
-		&i.CreatedAt,
-		&i.SolvedAt,
-	)
-	return i, err
+func (q *Queries) GetAnalyzedGameUUIDs(ctx context.Context, userID int64) ([]pgtype.UUID, error) {
+	rows, err := q.db.Query(ctx, getAnalyzedGameUUIDs, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []pgtype.UUID
+	for rows.Next() {
+		var game_uuid pgtype.UUID
+		if err := rows.Scan(&game_uuid); err != nil {
+			return nil, err
+		}
+		items = append(items, game_uuid)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getPuzzleForAttempt = `-- name: GetPuzzleForAttempt :one
+SELECT puzzle
+FROM puzzles
+WHERE id = $1 AND user_id = $2
+`
+
+type GetPuzzleForAttemptParams struct {
+	ID     int64 `json:"id"`
+	UserID int64 `json:"user_id"`
+}
+
+func (q *Queries) GetPuzzleForAttempt(ctx context.Context, arg GetPuzzleForAttemptParams) ([]byte, error) {
+	row := q.db.QueryRow(ctx, getPuzzleForAttempt, arg.ID, arg.UserID)
+	var puzzle []byte
+	err := row.Scan(&puzzle)
+	return puzzle, err
 }
 
 const getPuzzleStats = `-- name: GetPuzzleStats :one
@@ -53,4 +76,139 @@ func (q *Queries) GetPuzzleStats(ctx context.Context, userID int64) (GetPuzzleSt
 	var i GetPuzzleStatsRow
 	err := row.Scan(&i.Solved, &i.Unsolved, &i.Total)
 	return i, err
+}
+
+const getUnsolvedPuzzles = `-- name: GetUnsolvedPuzzles :many
+SELECT id, puzzle
+FROM puzzles
+WHERE user_id = $1 AND status <> 'solved'
+ORDER BY created_at, id
+`
+
+type GetUnsolvedPuzzlesRow struct {
+	ID     int64  `json:"id"`
+	Puzzle []byte `json:"puzzle"`
+}
+
+func (q *Queries) GetUnsolvedPuzzles(ctx context.Context, userID int64) ([]GetUnsolvedPuzzlesRow, error) {
+	rows, err := q.db.Query(ctx, getUnsolvedPuzzles, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []GetUnsolvedPuzzlesRow
+	for rows.Next() {
+		var i GetUnsolvedPuzzlesRow
+		if err := rows.Scan(&i.ID, &i.Puzzle); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const getpuzzles = `-- name: Getpuzzles :many
+SELECT id, game_uuid, user_id, puzzle, status, comment, created_at, solved_at, source_game_uuid, puzzle_index
+FROM puzzles
+WHERE user_id = $1
+`
+
+func (q *Queries) Getpuzzles(ctx context.Context, userID int64) ([]Puzzle, error) {
+	rows, err := q.db.Query(ctx, getpuzzles, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var items []Puzzle
+	for rows.Next() {
+		var i Puzzle
+		if err := rows.Scan(
+			&i.ID,
+			&i.GameUuid,
+			&i.UserID,
+			&i.Puzzle,
+			&i.Status,
+			&i.Comment,
+			&i.CreatedAt,
+			&i.SolvedAt,
+			&i.SourceGameUuid,
+			&i.PuzzleIndex,
+		); err != nil {
+			return nil, err
+		}
+		items = append(items, i)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	return items, nil
+}
+
+const isGameAnalyzed = `-- name: IsGameAnalyzed :one
+SELECT EXISTS (
+    SELECT 1 FROM analyzed_games WHERE user_id = $1 AND game_uuid = $2
+)
+`
+
+type IsGameAnalyzedParams struct {
+	UserID   int64       `json:"user_id"`
+	GameUuid pgtype.UUID `json:"game_uuid"`
+}
+
+func (q *Queries) IsGameAnalyzed(ctx context.Context, arg IsGameAnalyzedParams) (bool, error) {
+	row := q.db.QueryRow(ctx, isGameAnalyzed, arg.UserID, arg.GameUuid)
+	var exists bool
+	err := row.Scan(&exists)
+	return exists, err
+}
+
+const markPuzzleSolved = `-- name: MarkPuzzleSolved :execrows
+UPDATE puzzles
+SET status = 'solved', solved_at = COALESCE(solved_at, now())
+WHERE id = $1 AND user_id = $2 AND status <> 'solved'
+`
+
+type MarkPuzzleSolvedParams struct {
+	ID     int64 `json:"id"`
+	UserID int64 `json:"user_id"`
+}
+
+func (q *Queries) MarkPuzzleSolved(ctx context.Context, arg MarkPuzzleSolvedParams) (int64, error) {
+	result, err := q.db.Exec(ctx, markPuzzleSolved, arg.ID, arg.UserID)
+	if err != nil {
+		return 0, err
+	}
+	return result.RowsAffected(), nil
+}
+
+const saveAnalyzedGame = `-- name: SaveAnalyzedGame :one
+WITH inserted_game AS (
+    INSERT INTO analyzed_games (user_id, game_uuid)
+    VALUES ($1, $2)
+    ON CONFLICT (user_id, game_uuid) DO NOTHING
+    RETURNING user_id, game_uuid
+), inserted_puzzles AS (
+    INSERT INTO puzzles (user_id, source_game_uuid, puzzle_index, puzzle)
+    SELECT $1, $2, item.ordinality::INTEGER - 1, item.puzzle
+    FROM inserted_game
+    CROSS JOIN LATERAL jsonb_array_elements($3::JSONB) WITH ORDINALITY AS item(puzzle, ordinality)
+    RETURNING id
+)
+SELECT EXISTS (SELECT 1 FROM inserted_game) AS inserted
+`
+
+type SaveAnalyzedGameParams struct {
+	UserID   int64       `json:"user_id"`
+	GameUuid pgtype.UUID `json:"game_uuid"`
+	Column3  []byte      `json:"column_3"`
+}
+
+func (q *Queries) SaveAnalyzedGame(ctx context.Context, arg SaveAnalyzedGameParams) (bool, error) {
+	row := q.db.QueryRow(ctx, saveAnalyzedGame, arg.UserID, arg.GameUuid, arg.Column3)
+	var inserted bool
+	err := row.Scan(&inserted)
+	return inserted, err
 }

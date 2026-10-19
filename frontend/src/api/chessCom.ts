@@ -16,19 +16,20 @@ export const getGamesArchive = async (url: URL): Promise<GamesArchiveResponse> =
     return res.json();
 };
 
-export const getLatestGames = async (username: string): Promise<ChessGame[]> => {
+export const getLatestGames = async (username: string, analyzedGameUUIDs: ReadonlySet<string>): Promise<ChessGame[]> => {
     const archives = await getArchives(username);
-    const selectedArchives: ChessGame[][] = [];
-    let gameCount = 0;
+    const latestUnanalyzedGames: ChessGame[] = [];
 
-    for (let index = archives.length - 1; index >= 0; index--) {
+    for (let index = archives.length - 1; index >= 0 && latestUnanalyzedGames.length < MAX_ANALYSIS_GAMES; index--) {
         const archive = await getGamesArchive(archives[index]);
-        selectedArchives.unshift(archive.games ?? []);
-        gameCount += archive.games?.length ?? 0;
-        if (gameCount >= MAX_ANALYSIS_GAMES) {
-            break;
+        const games = archive.games ?? [];
+        for (let gameIndex = games.length - 1; gameIndex >= 0 && latestUnanalyzedGames.length < MAX_ANALYSIS_GAMES; gameIndex--) {
+            const game = games[gameIndex];
+            if (game.rules === "chess" && game.rated && !analyzedGameUUIDs.has(game.uuid.toLowerCase())) {
+                latestUnanalyzedGames.push(game);
+            }
         }
     }
 
-    return selectedArchives.flat().slice(-MAX_ANALYSIS_GAMES);
+    return latestUnanalyzedGames.reverse();
 };
