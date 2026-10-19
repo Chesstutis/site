@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useChessGameContext } from "@react-chess-tools/react-chess-game";
 import { ChessPuzzle, useChessPuzzleContext } from "@react-chess-tools/react-chess-puzzle";
+import type { Hint } from "@react-chess-tools/react-chess-puzzle";
 import type { Square } from "chess.js";
 import { Check, X } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
@@ -71,6 +72,8 @@ function PuzzleBoard({ puzzle, token, feedback, feedbackSquare, onFeedback, onCo
     const [hintPending, setHintPending] = useState(false);
     const [hintError, setHintError] = useState("");
     const [promotionMove, setPromotionMove] = useState<{ sourceSquare: string; targetSquare: string } | null>(null);
+    const [hintBeforeGuess, setHintBeforeGuess] = useState<Hint>("none");
+    const [hintedMoveBeforeGuess, setHintedMoveBeforeGuess] = useState<string | null>(null);
 
     const submitMove = async ({ sourceSquare, targetSquare, promotion }: {
         sourceSquare: string;
@@ -88,16 +91,13 @@ function PuzzleBoard({ puzzle, token, feedback, feedbackSquare, onFeedback, onCo
         setPending(true);
         try {
             const correct = await attemptPuzzle(token, puzzle.id, move);
-            // Keep the board library's square colors aligned with the server's decision.
-            changePuzzle({ fen: puzzle.fen, moves: correct ? [move] : [] });
-            if (!correct) {
-                methods.makeMove({ from: sourceSquare, to: targetSquare, promotion });
-                onFeedback("incorrect", targetSquare);
+            if (!methods.makeMove({ from: sourceSquare, to: targetSquare, promotion })) {
+                setHintError("Could not apply that move. Restart the puzzle and try again.");
                 return false;
             }
-            methods.makeMove({ from: sourceSquare, to: targetSquare, promotion });
-            onFeedback("correct", targetSquare);
-            onCorrect();
+            setHintBeforeGuess(hint);
+            onFeedback(correct ? "correct" : "incorrect", targetSquare);
+            if (correct) onCorrect();
             return true;
         } catch (error) {
             console.error(error);
@@ -120,6 +120,7 @@ function PuzzleBoard({ puzzle, token, feedback, feedbackSquare, onFeedback, onCo
             if (!legalMove) throw new Error("No legal move found for hint");
             const hintedMove = `${result.from}${legalMove.to}${legalMove.promotion ?? ""}`;
             changePuzzle({ fen: puzzle.fen, moves: [hintedMove] });
+            setHintedMoveBeforeGuess(hintedMove);
             onHint();
             if (level === 2) onHint();
         } catch (error) {
@@ -134,6 +135,16 @@ function PuzzleBoard({ puzzle, token, feedback, feedbackSquare, onFeedback, onCo
         setPromotionMove(null);
         onFeedback(null, null);
         setHintError("");
+        if (hintBeforeGuess === "piece") onHint();
+        if (hintBeforeGuess === "move") {
+            onHint();
+            onHint();
+        }
+    };
+
+    const resetPuzzle = {
+        fen: puzzle.fen,
+        moves: hintBeforeGuess === "none" || !hintedMoveBeforeGuess ? [] : [hintedMoveBeforeGuess],
     };
 
     return <>
@@ -180,7 +191,7 @@ function PuzzleBoard({ puzzle, token, feedback, feedbackSquare, onFeedback, onCo
             </div>
             <div className="flex min-h-10 items-center justify-center">
                 {feedback === "incorrect" ? (
-                    <ChessPuzzle.Reset asChild puzzle={{ fen: puzzle.fen, moves: [] }} showOn={["not-started", "in-progress", "failed", "solved"]} onReset={restart}>
+                    <ChessPuzzle.Reset asChild puzzle={resetPuzzle} showOn={["not-started", "in-progress", "failed", "solved"]} onReset={restart}>
                         <Button variant="outline" disabled={pending}>Restart</Button>
                     </ChessPuzzle.Reset>
                 ) : feedback === null ? (
@@ -375,6 +386,7 @@ export default function Solve() {
                             <ChessPuzzle.Root
                                 key={currentPuzzleResponse.id}
                                 puzzle={{ fen: currentPuzzleResponse.fen, moves: [] }}
+                                theme={{ puzzle: { failure: feedback === "correct" ? "rgba(16, 185, 129, 0.5)" : undefined } }}
                                 solveOnCheckmate={false}
                             >
                                 <PuzzleBoard
