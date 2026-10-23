@@ -16,7 +16,7 @@ Do not edit these files directly. `internal/db/pool.go` is handwritten.
 
 - `users`: application identity, password hash, Chess.com username, and timestamps.
 - `puzzles`: user-owned JSON puzzle records with solve status and timestamps.
-- `chess_com_rating_snapshots`: time-series Chess.com ratings by time control.
+- `chess_com_rating_snapshots`: Chess.com rating baselines by time control, captured at Chesstutis signup or one-time manual backfill. Current ratings are fetched live and are not stored by the app.
 - `refresh_tokens`: hashed opaque refresh tokens with expiry and revocation timestamps.
 
 User-owned tables reference `users(id)` with cascading deletion.

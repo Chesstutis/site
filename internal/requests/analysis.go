@@ -12,8 +12,10 @@ type ChessPlayer struct {
 }
 
 type ChessGame struct {
+	UUID        string      `json:"uuid"`
 	Pgn         string      `json:"pgn"`
 	Rules       string      `json:"rules"`
+	Rated       bool        `json:"rated"`
 	WhitePlayer ChessPlayer `json:"white"`
 	BlackPlayer ChessPlayer `json:"black"`
 }

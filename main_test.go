@@ -62,24 +62,28 @@ func TestRegisteredRoutes(t *testing.T) {
 	}
 
 	expected := map[string]bool{
-		http.MethodPost + " /api/auth/signup":     false,
-		http.MethodPost + " /api/auth/login":      false,
-		http.MethodPost + " /api/auth/refresh":    false,
-		http.MethodPost + " /api/auth/revoke":     false,
-		http.MethodGet + " /api/me":               false,
-		http.MethodPatch + " /api/me":             false,
-		http.MethodDelete + " /api/me":            false,
-		http.MethodPut + " /api/me/password":      false,
-		http.MethodGet + " /api/me/puzzles/stats": false,
-		http.MethodPost + " /api/analyze":         false,
-		http.MethodGet + " /":                     false,
-		http.MethodGet + " /home":                 false,
-		http.MethodGet + " /solve":                false,
-		http.MethodGet + " /login":                false,
-		http.MethodGet + " /signup":               false,
-		http.MethodGet + " /dashboard":            false,
-		http.MethodGet + " /account":              false,
-		"* /assets/*":                             false,
+		http.MethodPost + " /api/auth/signup":                    false,
+		http.MethodPost + " /api/auth/login":                     false,
+		http.MethodPost + " /api/auth/refresh":                   false,
+		http.MethodPost + " /api/auth/revoke":                    false,
+		http.MethodGet + " /api/me":                              false,
+		http.MethodPatch + " /api/me":                            false,
+		http.MethodDelete + " /api/me":                           false,
+		http.MethodPut + " /api/me/password":                     false,
+		http.MethodGet + " /api/me/ratings":                      false,
+		http.MethodGet + " /api/me/analyzed-games":               false,
+		http.MethodGet + " /api/me/puzzles/stats":                false,
+		http.MethodPost + " /api/me/puzzles/{puzzleID}/attempts": false,
+		http.MethodPost + " /api/me/puzzles/{puzzleID}/hints":    false,
+		http.MethodPost + " /api/analyze":                        false,
+		http.MethodGet + " /":                                    false,
+		http.MethodGet + " /home":                                false,
+		http.MethodGet + " /solve":                               false,
+		http.MethodGet + " /login":                               false,
+		http.MethodGet + " /signup":                              false,
+		http.MethodGet + " /dashboard":                           false,
+		http.MethodGet + " /account":                             false,
+		"* /assets/*":                                            false,
 	}
 
 	if err := chi.Walk(router, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
@@ -128,7 +132,10 @@ func TestAPIRoutes(t *testing.T) {
 		{"update account", http.MethodPatch, "/api/me", "{", false, true, http.StatusBadRequest},
 		{"delete account", http.MethodDelete, "/api/me", "", false, true, http.StatusInternalServerError},
 		{"change password", http.MethodPut, "/api/me/password", "{", false, true, http.StatusBadRequest},
+		{"rating comparison", http.MethodGet, "/api/me/ratings", "", false, true, http.StatusInternalServerError},
 		{"puzzle stats", http.MethodGet, "/api/me/puzzles/stats", "", false, true, http.StatusInternalServerError},
+		{"puzzle attempt", http.MethodPost, "/api/me/puzzles/1/attempts", "{", false, true, http.StatusBadRequest},
+		{"puzzle hint", http.MethodPost, "/api/me/puzzles/1/hints", "{", false, true, http.StatusBadRequest},
 		{"analyze games", http.MethodPost, "/api/analyze", "{", false, true, http.StatusBadRequest},
 	}
 
@@ -152,6 +159,27 @@ func TestAPIRoutes(t *testing.T) {
 				t.Fatalf("status = %d, want %d; body = %q", response.StatusCode, test.wantStatus, recorder.Body.String())
 			}
 		})
+	}
+}
+
+func TestPuzzleAttemptRateLimitIsPerUser(t *testing.T) {
+	router := testRouter(t)
+	token, err := auth.MakeJWT(42, routerTestJWTSecret, time.Hour)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 0; i < 21; i++ {
+		request := httptest.NewRequest(http.MethodPost, "/api/me/puzzles/1/attempts", strings.NewReader("{"))
+		request.Header.Set("Authorization", "Bearer "+token)
+		recorder := httptest.NewRecorder()
+		router.ServeHTTP(recorder, request)
+		want := http.StatusBadRequest
+		if i == 20 {
+			want = http.StatusTooManyRequests
+		}
+		if recorder.Code != want {
+			t.Fatalf("request %d status=%d want=%d", i+1, recorder.Code, want)
+		}
 	}
 }
 

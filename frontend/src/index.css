@@ -213,3 +213,44 @@ body {
     @apply font-sans;
 	}
 }
+
+@keyframes puzzle-feedback-ring {
+	0% {
+		transform: scale(0.55);
+		opacity: 0.9;
+	}
+	100% {
+		transform: scale(1.8);
+		opacity: 0;
+	}
+}
+
+@keyframes puzzle-feedback-pop {
+	0% {
+		transform: scale(0.45);
+		opacity: 0;
+	}
+	75% {
+		transform: scale(1.12);
+		opacity: 1;
+	}
+	100% {
+		transform: scale(1);
+		opacity: 1;
+	}
+}
+
+.puzzle-feedback-ring {
+	animation: puzzle-feedback-ring 650ms ease-out 1;
+}
+
+.puzzle-feedback-pop {
+	animation: puzzle-feedback-pop 240ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.puzzle-feedback-ring,
+	.puzzle-feedback-pop {
+		animation: none;
+	}
+}

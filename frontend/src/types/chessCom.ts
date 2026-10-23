@@ -10,8 +10,10 @@ export type ChessPlayer = {
 };
 
 export type ChessGame = {
+    uuid: string;
     pgn: string;
     rules: string;
+    rated: boolean;
     white: ChessPlayer;
     black: ChessPlayer;
 };

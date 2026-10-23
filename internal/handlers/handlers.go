@@ -3,13 +3,16 @@ package handlers
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
 	"github.com/chesstutis/analyzer"
 	"github.com/chesstutis/site/internal/auth"
+	"github.com/chesstutis/site/internal/config"
 	"github.com/chesstutis/site/internal/db"
 	"github.com/chesstutis/site/internal/requests"
 	"github.com/corentings/chess/v2"
@@ -17,6 +20,7 @@ import (
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgtype"
 
+	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/render"
 )
@@ -52,67 +56,258 @@ func (h *Handler) PingHandler(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("pong"))
 }
 
+func (h *Handler) GetAnalyzedGames(w http.ResponseWriter, r *http.Request) {
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	gameUUIDs, err := h.Queries.GetAnalyzedGameUUIDs(r.Context(), userID)
+	if err != nil {
+		slog.Error("failed to fetch analyzed games", "request_id", middleware.GetReqID(r.Context()), "err", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+
+	response := struct {
+		GameUUIDs []string `json:"game_uuids"`
+	}{GameUUIDs: make([]string, 0, len(gameUUIDs))}
+	for _, gameUUID := range gameUUIDs {
+		response.GameUUIDs = append(response.GameUUIDs, gameUUID.String())
+	}
+	render.JSON(w, r, response)
+}
+
 func (h *Handler) AnalyzeGames(w http.ResponseWriter, r *http.Request) {
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
 	rawGames, err := requests.ParseAnalysisRequest(r.Body)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
+	if len(rawGames.Games) > config.MaxAnalysisGames {
+		http.Error(w, fmt.Sprintf("cannot analyze more than %d games", config.MaxAnalysisGames), http.StatusBadRequest)
+		return
+	}
 
-	var parsedGames []*chess.Game
-	for _, rawGamePGN := range rawGames.Games {
-		pgn, err := chess.PGN(strings.NewReader(rawGamePGN.Pgn))
+	for _, rawGame := range rawGames.Games {
+		if rawGame.Rules != "chess" || !rawGame.Rated {
+			http.Error(w, "only rated standard chess games are accepted", http.StatusBadRequest)
+			return
+		}
+		var gameUUID pgtype.UUID
+		if err := gameUUID.Scan(rawGame.UUID); err != nil || !gameUUID.Valid {
+			http.Error(w, "invalid game UUID", http.StatusBadRequest)
+			return
+		}
+		analyzed, err := h.Queries.IsGameAnalyzed(r.Context(), db.IsGameAnalyzedParams{UserID: userID, GameUuid: gameUUID})
+		if err != nil {
+			slog.Error("failed to check analyzed game", "request_id", middleware.GetReqID(r.Context()), "err", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		if analyzed {
+			continue
+		}
+		pgn, err := chess.PGN(strings.NewReader(rawGame.Pgn))
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		parsedGames = append(parsedGames, chess.NewGame(pgn))
-	}
-
-	// TODO: this section should get replaced with pushing the games to PQueue to be analyzed and waiting for the result
-	//! also i should probably do the username parsing first and package that in the struct...
-	var analyzedGames []analyzer.GameAnalysis
-	for i, game := range parsedGames {
+		game := chess.NewGame(pgn)
 		var playerColor chess.Color
-		if strings.EqualFold(rawGames.Games[i].WhitePlayer.Username, rawGames.Username) {
+		if strings.EqualFold(rawGame.WhitePlayer.Username, rawGames.Username) {
 			playerColor = chess.White
-		} else if strings.EqualFold(rawGames.Games[i].BlackPlayer.Username, rawGames.Username) {
+		} else if strings.EqualFold(rawGame.BlackPlayer.Username, rawGames.Username) {
 			playerColor = chess.Black
 		} else {
 			// p = chess.NoColor
-			slog.Error("analysis failed, chess.NoColor")
+			slog.Error("analysis failed: player color missing", "request_id", middleware.GetReqID(r.Context()))
 			http.Error(w, "unable to analyze game", http.StatusBadRequest)
 			return
 		}
 
 		gameAnalysis, err := h.Analyzer.AnalyzeGame(game, playerColor)
 		if err != nil {
-			slog.Error("analysis failed", "err", err)
+			slog.Error("analysis failed", "request_id", middleware.GetReqID(r.Context()), "err", err)
 			http.Error(w, err.Error(), http.StatusBadRequest)
 			return
 		}
-		analyzedGames = append(analyzedGames, *gameAnalysis)
+		type storedPuzzle struct {
+			Fen        string `json:"fen"`
+			BestMove   string `json:"best_move"`
+			PlayerMove string `json:"player_move"`
+		}
+		uci := chess.UCINotation{}
+		stored := make([]storedPuzzle, 0, len(gameAnalysis.Puzzles))
+		for _, puzzle := range gameAnalysis.Puzzles {
+			stored = append(stored, storedPuzzle{
+				Fen: puzzle.Position.String(), BestMove: uci.Encode(puzzle.Position, puzzle.BestMove),
+				PlayerMove: uci.Encode(puzzle.Position, puzzle.PlayerMove),
+			})
+		}
+		puzzlesJSON, err := json.Marshal(stored)
+		if err != nil {
+			slog.Error("failed to encode analyzed puzzles", "request_id", middleware.GetReqID(r.Context()), "err", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		if _, err := h.Queries.SaveAnalyzedGame(r.Context(), db.SaveAnalyzedGameParams{
+			UserID: userID, GameUuid: gameUUID, Column3: puzzlesJSON,
+		}); err != nil {
+			slog.Error("failed to save analyzed game", "request_id", middleware.GetReqID(r.Context()), "err", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
 	}
 
 	type PuzzleResponse struct {
+		ID         int64  `json:"id"`
 		Fen        string `json:"fen"`
-		BestMove   string `json:"best_move"`
 		PlayerMove string `json:"player_move"`
 	}
-
-	uci := chess.UCINotation{}
-
-	var puzzleResponses []PuzzleResponse
-	for _, gameAnalysis := range analyzedGames {
-		for _, p := range gameAnalysis.Puzzles {
-			puzzleResponses = append(puzzleResponses, PuzzleResponse{
-				Fen:        p.Position.String(),
-				BestMove:   uci.Encode(p.Position, p.BestMove),
-				PlayerMove: uci.Encode(p.Position, p.PlayerMove),
-			})
+	rows, err := h.Queries.GetUnsolvedPuzzles(r.Context(), userID)
+	if err != nil {
+		slog.Error("failed to fetch puzzles", "request_id", middleware.GetReqID(r.Context()), "err", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	puzzleResponses := make([]PuzzleResponse, 0, len(rows))
+	for _, row := range rows {
+		var puzzle struct {
+			Fen        string `json:"fen"`
+			PlayerMove string `json:"player_move"`
 		}
+		if err := json.Unmarshal(row.Puzzle, &puzzle); err != nil {
+			slog.Error("failed to decode saved puzzle", "request_id", middleware.GetReqID(r.Context()), "err", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+		puzzleResponses = append(puzzleResponses, PuzzleResponse{ID: row.ID, Fen: puzzle.Fen, PlayerMove: puzzle.PlayerMove})
 	}
 	render.JSON(w, r, puzzleResponses)
+}
+
+func (h *Handler) AttemptPuzzle(w http.ResponseWriter, r *http.Request) {
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	puzzleID, err := strconv.ParseInt(chi.URLParam(r, "puzzleID"), 10, 64)
+	if err != nil || puzzleID <= 0 {
+		http.Error(w, "invalid puzzle ID", http.StatusBadRequest)
+		return
+	}
+	var req struct {
+		Move string `json:"move"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil || !validUCIMove(req.Move) {
+		http.Error(w, "invalid move", http.StatusBadRequest)
+		return
+	}
+	data, err := h.Queries.GetPuzzleForAttempt(r.Context(), db.GetPuzzleForAttemptParams{ID: puzzleID, UserID: userID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		slog.Error("failed to fetch puzzle for attempt", "request_id", middleware.GetReqID(r.Context()), "err", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	var puzzle struct {
+		BestMove string `json:"best_move"`
+	}
+	if err := json.Unmarshal(data, &puzzle); err != nil {
+		slog.Error("failed to decode puzzle solution", "request_id", middleware.GetReqID(r.Context()), "err", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	correct := strings.EqualFold(req.Move, puzzle.BestMove)
+	if correct {
+		if _, err := h.Queries.MarkPuzzleSolved(r.Context(), db.MarkPuzzleSolvedParams{ID: puzzleID, UserID: userID}); err != nil {
+			slog.Error("failed to mark puzzle solved", "request_id", middleware.GetReqID(r.Context()), "err", err)
+			http.Error(w, "internal server error", http.StatusInternalServerError)
+			return
+		}
+	}
+	render.JSON(w, r, struct {
+		Correct bool `json:"correct"`
+	}{Correct: correct})
+}
+
+func (h *Handler) PuzzleHint(w http.ResponseWriter, r *http.Request) {
+	userID, ok := auth.UserIDFromContext(r.Context())
+	if !ok {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	puzzleID, err := strconv.ParseInt(chi.URLParam(r, "puzzleID"), 10, 64)
+	if err != nil || puzzleID <= 0 {
+		http.Error(w, "invalid puzzle ID", http.StatusBadRequest)
+		return
+	}
+	var req struct {
+		Level int `json:"level"`
+	}
+	decoder := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1024))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(&req); err != nil || (req.Level != 1 && req.Level != 2) {
+		http.Error(w, "invalid hint level", http.StatusBadRequest)
+		return
+	}
+	data, err := h.Queries.GetPuzzleForAttempt(r.Context(), db.GetPuzzleForAttemptParams{ID: puzzleID, UserID: userID})
+	if errors.Is(err, pgx.ErrNoRows) {
+		http.NotFound(w, r)
+		return
+	}
+	if err != nil {
+		slog.Error("failed to fetch puzzle hint", "request_id", middleware.GetReqID(r.Context()), "err", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	var puzzle struct {
+		BestMove string `json:"best_move"`
+	}
+	if err := json.Unmarshal(data, &puzzle); err != nil {
+		slog.Error("failed to decode puzzle hint", "request_id", middleware.GetReqID(r.Context()), "err", err)
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if !validUCIMove(puzzle.BestMove) {
+		slog.Error("invalid saved puzzle move", "request_id", middleware.GetReqID(r.Context()))
+		http.Error(w, "internal server error", http.StatusInternalServerError)
+		return
+	}
+	if req.Level == 1 {
+		render.JSON(w, r, struct {
+			From string `json:"from"`
+		}{From: puzzle.BestMove[:2]})
+		return
+	}
+	render.JSON(w, r, struct {
+		From string `json:"from"`
+		To   string `json:"to"`
+	}{From: puzzle.BestMove[:2], To: puzzle.BestMove[2:4]})
+}
+
+func validUCIMove(move string) bool {
+	if len(move) != 4 && len(move) != 5 {
+		return false
+	}
+	validSquare := func(s string) bool { return len(s) == 2 && s[0] >= 'a' && s[0] <= 'h' && s[1] >= '1' && s[1] <= '8' }
+	if !validSquare(move[:2]) || !validSquare(move[2:4]) {
+		return false
+	}
+	return len(move) == 4 || strings.ContainsRune("qrbn", rune(move[4]))
 }
 
 func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
@@ -149,13 +344,20 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	switch h.validateChessComUsername(r.Context(), req.ChessComUsername) {
+	usernameStatus, chessComPlayerID := h.fetchChessComPlayerID(r.Context(), req.ChessComUsername)
+	switch usernameStatus {
 	case chessComUsernameInvalid:
 		http.Error(w, "Chess.com username was not found", http.StatusBadRequest)
 		return
 	case chessComUsernameUnavailable:
 		http.Error(w, "Chess.com username verification is temporarily unavailable", http.StatusServiceUnavailable)
 		return
+	}
+
+	ratings, err := h.fetchChessComRatings(r.Context(), req.ChessComUsername)
+	if err != nil {
+		slog.Warn("failed to capture initial Chess.com ratings", "request_id", middleware.GetReqID(r.Context()), "err", err)
+		ratings = chessComRatings{}
 	}
 
 	passwordHash, err := auth.HashPassword(req.Password)
@@ -169,10 +371,15 @@ func (h *Handler) Signup(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	user, err := h.Queries.CreateUser(r.Context(), db.CreateUserParams{
+	user, err := h.Queries.CreateUserWithRatingSnapshot(r.Context(), db.CreateUserWithRatingSnapshotParams{
 		Email:            req.Email,
 		PasswordHash:     passwordHash,
 		ChessComUsername: req.ChessComUsername,
+		ChessComPlayerID: chessComPlayerID,
+		BulletRating:     ratings.Bullet,
+		BlitzRating:      ratings.Blitz,
+		RapidRating:      ratings.Rapid,
+		DailyRating:      ratings.Daily,
 	})
 
 	if err != nil {
@@ -315,11 +522,6 @@ func (h *Handler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !validPassword {
-		slog.Error(
-			"incorrect password",
-			"request_id", middleware.GetReqID(r.Context()),
-			"err", err,
-		)
 		http.Error(w, "invalid email or password", http.StatusUnauthorized)
 		return
 	}
@@ -410,6 +612,11 @@ func (h *Handler) GetMe(w http.ResponseWriter, r *http.Request) {
 
 	userInfo, err := h.Queries.GetUserById(r.Context(), userId)
 	if err != nil {
+		slog.Error(
+			"error fetching user from database",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
 		http.Error(w, "error getting user info", http.StatusInternalServerError)
 		return
 	}
@@ -486,6 +693,7 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Error(
 			"error getting refresh token from database",
+			"request_id", middleware.GetReqID(r.Context()),
 			"err", err,
 		)
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -512,7 +720,13 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !now.Before(tokInfo.ExpiresAt.Time) {
-		_, _ = h.Queries.RevokeRefreshToken(r.Context(), tokHash)
+		if _, err := h.Queries.RevokeRefreshToken(r.Context(), tokHash); err != nil {
+			slog.Error(
+				"error revoking expired refresh token",
+				"request_id", middleware.GetReqID(r.Context()),
+				"err", err,
+			)
+		}
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -558,7 +772,13 @@ func (h *Handler) Refresh(w http.ResponseWriter, r *http.Request) {
 	})
 	if errors.Is(err, pgx.ErrNoRows) {
 		// Another use won the rotation race; treat this request as replay.
-		_, _ = h.Queries.RevokeRefreshTokenFamily(r.Context(), tokHash)
+		if _, revokeErr := h.Queries.RevokeRefreshTokenFamily(r.Context(), tokHash); revokeErr != nil {
+			slog.Error(
+				"error revoking refresh token family after rotation race",
+				"request_id", middleware.GetReqID(r.Context()),
+				"err", revokeErr,
+			)
+		}
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
@@ -592,6 +812,7 @@ func (h *Handler) Revoke(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		slog.Error(
 			"error revoking refresh token in database",
+			"request_id", middleware.GetReqID(r.Context()),
 			"err", err,
 		)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
@@ -661,6 +882,11 @@ func (h *Handler) PatchMe(w http.ResponseWriter, r *http.Request) {
 
 	data, err := json.Marshal(res)
 	if err != nil {
+		slog.Error(
+			"error marshalling response",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -678,6 +904,11 @@ func (h *Handler) DeleteMe(w http.ResponseWriter, r *http.Request) {
 
 	user, err := h.Queries.DeleteUser(r.Context(), userId)
 	if err != nil {
+		slog.Error(
+			"error deleting user from database",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
@@ -692,6 +923,11 @@ func (h *Handler) DeleteMe(w http.ResponseWriter, r *http.Request) {
 
 	data, err := json.Marshal(res)
 	if err != nil {
+		slog.Error(
+			"error marshalling response",
+			"request_id", middleware.GetReqID(r.Context()),
+			"err", err,
+		)
 		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}

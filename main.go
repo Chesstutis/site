@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -102,6 +103,27 @@ func main() {
 func newRouter(h *handlers.Handler, distFS fs.FS, betaUsername, betaPassword, tokenSecret string) http.Handler {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
+	r.Use(func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			wrapped := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
+			next.ServeHTTP(wrapped, r)
+			status := wrapped.Status()
+			if status < http.StatusBadRequest {
+				return
+			}
+
+			level := slog.LevelWarn
+			if status >= http.StatusInternalServerError {
+				level = slog.LevelError
+			}
+			slog.Log(r.Context(), level, "HTTP request failed",
+				"request_id", middleware.GetReqID(r.Context()),
+				"method", r.Method,
+				"path", r.URL.Path,
+				"status", status,
+			)
+		})
+	})
 	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
@@ -122,6 +144,7 @@ func newRouter(h *handlers.Handler, distFS fs.FS, betaUsername, betaPassword, to
 	loginLimiter := auth.NewRateLimiter(10, 15*time.Minute)
 	refreshLimiter := auth.NewRateLimiter(30, time.Minute)
 	accountChangeLimiter := auth.NewRateLimiter(10, 15*time.Minute)
+	puzzleActionLimiter := auth.NewRateLimiter(20, time.Minute)
 
 	r.Route("/api", func(r chi.Router) {
 		r.Group(func(r chi.Router) {
@@ -136,10 +159,14 @@ func newRouter(h *handlers.Handler, distFS fs.FS, betaUsername, betaPassword, to
 		r.Group(func(r chi.Router) {
 			r.Use(auth.RequireAuth(tokenSecret))
 			r.Get("/me", h.GetMe)
+			r.Get("/me/ratings", h.MyRatings)
 			r.With(accountChangeLimiter.Middleware).Patch("/me", h.PatchMe)
 			r.With(accountChangeLimiter.Middleware).Delete("/me", h.DeleteMe)
 			r.With(accountChangeLimiter.Middleware).Put("/me/password", h.ChangePassword)
+			r.Get("/me/analyzed-games", h.GetAnalyzedGames)
 			r.Get("/me/puzzles/stats", h.PuzzleStats)
+			r.With(puzzleActionLimiter.UserMiddleware).Post("/me/puzzles/{puzzleID}/attempts", h.AttemptPuzzle)
+			r.With(puzzleActionLimiter.UserMiddleware).Post("/me/puzzles/{puzzleID}/hints", h.PuzzleHint)
 			r.Post("/analyze", h.AnalyzeGames)
 		})
 	})
